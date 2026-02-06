@@ -12,7 +12,7 @@ from src.utils import khux_decrypt
 @dataclass
 class BGADHeader:
     magic: bytes # 4
-    key_type: int # 2
+    encryption_mode: int # 2
     unk: int # 2
     header_size: int # 2
     name_length: int # 2
@@ -47,13 +47,13 @@ class KHUxBGAD(KHUxFile):
 
     def extract(self, extract_dir: str) -> None:
         name_bytes = self.file_handle.read(self.header.name_length)
-        name = khux_decrypt(name_bytes, self.header.data_size)
+        name = khux_decrypt(name_bytes, self.header.data_size, self.header.encryption_mode)
         self.name = name.decode("utf-8").rstrip("\x00")
 
         print(f"Detected BGAD {self.name}")
 
         data = self.file_handle.read(self.header.data_size)
-        data = khux_decrypt(data, self.header.name_length)
+        data = khux_decrypt(data, self.header.name_length, self.header.encryption_mode)
         if self.header.compression_flag != 0:
             data = decompress(data)
             
@@ -64,6 +64,7 @@ class KHUxBGAD(KHUxFile):
         elif not file_base:
             file_base = f"@{os.path.basename(file_dir)}"  # Use directory name as base
         file_dir = file_dir.rstrip("/")  # prevent file from overriding joint directories
+        
         file_out_dir = os.path.join(extract_dir, "bgad", self.file_name, file_dir)
         os.makedirs(file_out_dir, exist_ok=True)
 
