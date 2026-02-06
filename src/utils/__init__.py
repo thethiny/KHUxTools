@@ -28,7 +28,7 @@ def khux_decrypt(data: Union[bytes, bytearray, BinaryIO], seed: int, mode: int, 
         max_len = length
 
     output = bytearray(max_len)  # preallocate
-    s = seed
+    s = seed & 0xFFFFFFFF
     bytes_processed = 0
 
     chunk_size = 1 << 20 # 1 MB
@@ -72,21 +72,5 @@ def khux_decrypt(data: Union[bytes, bytearray, BinaryIO], seed: int, mode: int, 
             bytes_processed += n
     else:
         raise ValueError(f"Unsupported decryption mode: {mode}")
-
-    # while bytes_processed < max_len:
-    #     chunk = stream.read(4)
-    #     actual_len = len(chunk)
-    #     if actual_len == 0:
-    #         break
-
-    #     if actual_len < 4:
-    #         chunk = chunk.ljust(4, b"\x00")
-
-    #     current_key = khux_rand(current_key) & 0xFFFFFFFF
-    #     val = int.from_bytes(chunk, "little")
-    #     decrypted = ((val ^ current_key) & 0xFFFFFFFF).to_bytes(4, "little")
-
-    #     output[bytes_processed : bytes_processed + actual_len] = decrypted[:actual_len]
-    #     bytes_processed += actual_len
 
     return bytes(output)
