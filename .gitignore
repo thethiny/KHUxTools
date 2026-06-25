@@ -3,3 +3,6 @@ extracted_files
 .pytest_cache
 __pycache__
 *.pyc
+test*.py
+!test_*.py
+.cache/

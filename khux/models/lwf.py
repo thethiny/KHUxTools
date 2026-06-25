@@ -1,0 +1,30 @@
+from dataclasses import dataclass
+from io import BufferedReader
+import struct
+
+
+@dataclass
+class LWFHeader:
+    magic: bytes        # 0x00  4 bytes  "LWF\0"
+    version: int        # 0x04  u32
+    data_size: int      # 0x08  u32
+    total_size: int     # 0x0C  u32
+
+    _fmt = "<4sIII"
+    _struct = struct.Struct(_fmt)
+    _magic = b"LWF\x00"
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "LWFHeader":
+        unpacked = cls._struct.unpack_from(data)
+        obj = cls(*unpacked)
+        if obj.magic != cls._magic:
+            raise ValueError(f"Invalid LWF magic: {obj.magic!r}")
+        return obj
+
+    @classmethod
+    def from_file(cls, file: BufferedReader) -> "LWFHeader":
+        data = file.read(cls._struct.size)
+        if len(data) < cls._struct.size:
+            raise ValueError(f"Not enough data for LWF header (got {len(data)} bytes)")
+        return cls.from_bytes(data)

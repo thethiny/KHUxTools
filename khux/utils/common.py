@@ -24,7 +24,7 @@ class KHUxFile:
                 )
         else:
             raise ValueError("Invalid file type")
-    
+
     def close(self) -> None:
         if self.file_handle:
             self.file_handle.close()

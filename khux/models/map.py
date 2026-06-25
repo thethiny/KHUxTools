@@ -1,0 +1,29 @@
+from dataclasses import dataclass
+from io import BufferedReader
+import struct
+
+
+@dataclass
+class MAPHeader:
+    magic: bytes        # 0x00  4 bytes  "MAP\0"
+    version: int        # 0x04  u32
+    entry_count: int    # 0x08  u32
+
+    _fmt = "<4sII"
+    _struct = struct.Struct(_fmt)
+    _magic = b"MAP\x00"
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "MAPHeader":
+        unpacked = cls._struct.unpack_from(data)
+        obj = cls(*unpacked)
+        if obj.magic != cls._magic:
+            raise ValueError(f"Invalid MAP magic: {obj.magic!r}")
+        return obj
+
+    @classmethod
+    def from_file(cls, file: BufferedReader) -> "MAPHeader":
+        data = file.read(cls._struct.size)
+        if len(data) < cls._struct.size:
+            raise ValueError(f"Not enough data for MAP header (got {len(data)} bytes)")
+        return cls.from_bytes(data)
