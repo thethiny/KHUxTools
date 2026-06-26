@@ -5,7 +5,7 @@ from io import BufferedReader
 from typing import List, Optional, Union
 
 from khux.utils.compression import decompress
-from khux.utils.crypto import khux_decrypt
+from khux.utils.crypto import khux_decrypt, chacha8_crypt, BGAD_NONCE_XOR, KEY_APK, KEY_DOWNLOAD, KEY_SAVE
 from khux.utils.common import KHUxFile
 from khux.models.bgad import BGADHeader
 
@@ -63,20 +63,18 @@ class KHUxBGAD(KHUxFile):
     def _decrypt_name_mode3(self, name_bytes: bytes, raw_nonce: bytes) -> str:
         if self.encryption_key is None:
             return f"<encrypted:{name_bytes.hex()}>"
-        from khux.utils.crypto import _chacha20_crypt, BGAD_NONCE_XOR
         nonce = bytes(a ^ b for a, b in zip(raw_nonce, BGAD_NONCE_XOR))
-        decrypted = _chacha20_crypt(name_bytes, self.encryption_key, nonce)
+        decrypted = chacha8_crypt(name_bytes, self.encryption_key, nonce)
         try:
             return decrypted.decode("utf-8").rstrip("\x00")
         except UnicodeDecodeError:
-            return f"<encrypted:{name_bytes.hex()}>"
+            return decrypted.hex()
 
     def _decrypt_data_mode3(self, encrypted_data: bytes, raw_nonce: bytes) -> bytes:
         if self.encryption_key is None:
             return encrypted_data
-        from khux.utils.crypto import _chacha20_crypt, BGAD_NONCE_XOR
         nonce = bytes(a ^ b for a, b in zip(raw_nonce, BGAD_NONCE_XOR))
-        return _chacha20_crypt(encrypted_data, self.encryption_key, nonce)
+        return chacha8_crypt(encrypted_data, self.encryption_key, nonce)
 
     def extract(self, extract_dir: str) -> BGADEntry:
         entry = self.read_entry()

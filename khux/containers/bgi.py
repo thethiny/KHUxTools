@@ -5,14 +5,7 @@ from typing import Dict, List, Optional, Union
 
 from khux.models.bgi import BGIHeader, BGIEntry, BGINameEntry
 from khux.utils.common import KHUxFile
-from khux.utils.crypto import _chacha20_crypt
-
-
-BGI_NONCE_XOR = bytes([0xEA, 0x74, 0x35, 0x0A, 0x0F, 0x34, 0xDB, 0xC4])
-
-BGI_KEY = bytes.fromhex(
-    "5CA56C5827FA15CF1ECE2A37180953B801DEBFD0A71DD6AA6DD1D4F414A5FBC4"
-)
+from khux.utils.crypto import chacha8_crypt, BGI_NONCE_XOR, KEY_APK
 
 
 def _derive_bgi_nonce(last8: bytes) -> bytes:
@@ -110,7 +103,7 @@ class KHUxBGI(KHUxFile):
     def __init__(self, file_path: Union[str, BufferedReader], file_name: str = "",
                  key: Optional[bytes] = None) -> None:
         super().__init__(file_path, file_name)
-        self.key = key or BGI_KEY
+        self.key = key or KEY_APK
         self.header = BGIHeader.from_file(self.file_handle)
 
     def parse(self) -> BGIArchive:
@@ -138,7 +131,7 @@ class KHUxBGI(KHUxFile):
 
         nonce = _derive_bgi_nonce(last8)
         encrypted = self.file_handle.read(data_size)
-        return _chacha20_crypt(encrypted, self.key, nonce)
+        return chacha8_crypt(encrypted, self.key, nonce)
 
     def _parse_tables(self, data: bytes) -> BGIArchive:
         if len(data) < 8:
