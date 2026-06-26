@@ -57,9 +57,16 @@ def _chacha20_quarterround(x: list, a: int, b: int, c: int, d: int) -> None:
     x[c] = (x[c] + x[d]) & m; x[b] ^= x[c]; x[b] = ((x[b] <<  7) | (x[b] >> 25)) & m
 
 
-def _chacha20_block(key32: bytes, counter: int, nonce8: bytes) -> bytes:
-    state = [0x61707865, 0x3320646E, 0x79622D32, 0x6B206574]
-    state += list(struct.unpack("<8I", key32))
+def _chacha20_block(key: bytes, counter: int, nonce8: bytes) -> bytes:
+    if len(key) == 16:
+        # tau constant: "expand 16-byte k"
+        state = [0x61707865, 0x3120646E, 0x79622D36, 0x6B206574]
+        state += list(struct.unpack("<4I", key))
+        state += list(struct.unpack("<4I", key))
+    else:
+        # sigma constant: "expand 32-byte k"
+        state = [0x61707865, 0x3320646E, 0x79622D32, 0x6B206574]
+        state += list(struct.unpack("<8I", key))
     state += [counter & 0xFFFFFFFF, (counter >> 32) & 0xFFFFFFFF]
     state += list(struct.unpack("<2I", nonce8))
 
@@ -79,9 +86,7 @@ def _chacha20_block(key32: bytes, counter: int, nonce8: bytes) -> bytes:
 
 
 def _chacha20_crypt(data: bytes, key: bytes, nonce8: bytes) -> bytes:
-    if len(key) == 16:
-        key = key + key
-    if len(key) != 32:
+    if len(key) not in (16, 32):
         raise ValueError(f"ChaCha20 key must be 16 or 32 bytes, got {len(key)}")
     if len(nonce8) != 8:
         raise ValueError(f"ChaCha20 nonce must be 8 bytes, got {len(nonce8)}")
