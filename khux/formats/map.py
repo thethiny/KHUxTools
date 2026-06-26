@@ -1,67 +1,55 @@
-from dataclasses import dataclass
-from io import BufferedReader
+from dataclasses import dataclass, field
 import struct
-from typing import List, Union
-
-from khux.models.map import MAPHeader
-from khux.utils.common import KHUxFile
-
-
-@dataclass
-class MAPEntry:
-    name: str
-    data: bytes
+from typing import List
 
 
 @dataclass
 class MAPData:
-    header: MAPHeader
+    magic: bytes
+    version: int
+    name_field_size: int
+    map_name: str
+    num_sections: int
+    section_offsets: List[int]
     raw_data: bytes
-    entries: List[MAPEntry]
+
+    @property
+    def data_start(self) -> int:
+        return 12 + self.name_field_size
 
 
-class KHUxMAP(KHUxFile):
-    def __init__(self, file_path: Union[str, BufferedReader], file_name: str = "") -> None:
-        super().__init__(file_path, file_name)
-        self.header = MAPHeader.from_file(self.file_handle)
+def parse_map(data: bytes) -> MAPData:
+    if len(data) < 12 or data[:4] != b"MAP\x00":
+        raise ValueError("Not a valid MAP file")
 
-    def parse(self) -> MAPData:
-        remaining = self.file_handle.read()
-        full_data = (
-            self.header._struct.pack(
-                self.header.magic, self.header.version, self.header.entry_count
-            ) + remaining
-        )
-        entries = self._parse_entries(full_data)
-        return MAPData(header=self.header, raw_data=full_data, entries=entries)
+    version = struct.unpack_from("<I", data, 4)[0]
+    name_field_size = struct.unpack_from("<I", data, 8)[0]
 
-    def _parse_entries(self, data: bytes) -> List[MAPEntry]:
-        entries = []
-        off = MAPHeader._struct.size
-        for i in range(self.header.entry_count):
+    name_end = 12
+    if name_field_size > 0 and 12 + name_field_size <= len(data):
+        raw_name = data[12:12 + name_field_size]
+        null_idx = raw_name.find(0)
+        if null_idx >= 0:
+            raw_name = raw_name[:null_idx]
+        map_name = raw_name.decode("ascii", errors="replace")
+        name_end = 12 + name_field_size
+    else:
+        map_name = ""
+
+    num_sections = 0
+    section_offsets = []
+    if name_end + 4 <= len(data):
+        num_sections = struct.unpack_from("<I", data, name_end)[0]
+        off = name_end + 4
+        for i in range(min(num_sections, 64)):
             if off + 4 > len(data):
                 break
-            name_len = struct.unpack_from("<I", data, off)[0]
+            section_offsets.append(struct.unpack_from("<I", data, off)[0])
             off += 4
-            if off + name_len > len(data):
-                break
-            name = data[off:off + name_len].decode("utf-8", errors="replace").rstrip("\x00")
-            off += name_len
-            if off + 4 > len(data):
-                entries.append(MAPEntry(name=name, data=b""))
-                break
-            entry_size = struct.unpack_from("<I", data, off)[0]
-            off += 4
-            entry_data = data[off:off + entry_size]
-            off += entry_size
-            entries.append(MAPEntry(name=name, data=entry_data))
-        return entries
 
-    @classmethod
-    def from_bytes(cls, data: bytes) -> MAPData:
-        header = MAPHeader.from_bytes(data[:MAPHeader._struct.size])
-        obj = cls.__new__(cls)
-        obj.header = header
-        obj.file_handle = None
-        entries = obj._parse_entries(data)
-        return MAPData(header=header, raw_data=data, entries=entries)
+    return MAPData(
+        magic=data[:4], version=version,
+        name_field_size=name_field_size, map_name=map_name,
+        num_sections=num_sections, section_offsets=section_offsets,
+        raw_data=data,
+    )

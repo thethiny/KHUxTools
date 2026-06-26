@@ -53,6 +53,20 @@ try:
 except ImportError:
     HAS_PIL = False
 
+try:
+    import io as _io
+    from khux.containers.bgi import KHUxBGI
+    from khux.utils.crypto import KEY_APK, KEY_DOWNLOAD
+    HAS_BGI = True
+except ImportError:
+    HAS_BGI = False
+
+try:
+    from khux.formats.avatar import decrypt_master_data_payload, AvatarPartDecrypted
+    HAS_MASTER_DATA = True
+except ImportError:
+    HAS_MASTER_DATA = False
+
 
 # ---------------------------------------------------------------------------
 # Dark theme colors
@@ -1014,9 +1028,17 @@ class KHUxExplorer(QMainWindow):
         elif fmt in ("plist", "json"):
             self._show_text_properties(entry)
 
-        # Avatar part info
+        # BGI index display
+        if HAS_BGI and entry.data[:4] == b'\x89BGI':
+            self._show_bgi_index_properties(entry)
+
+        # Avatar part info (master data decryption)
         if HAS_AVATAR and self._is_avatar_container() and entry.name.isdigit():
             self._show_avatar_entry_properties(entry)
+
+        # Master data decryption for numbered entries in master containers
+        if HAS_MASTER_DATA and self._is_master_data_container() and entry.name.isdigit():
+            self._show_master_data_properties(entry)
 
         self._props_text.moveCursor(QTextCursor.MoveOperation.Start)
 
@@ -1073,6 +1095,90 @@ class KHUxExplorer(QMainWindow):
         except Exception:
             pass
 
+    def _show_bgi_index_properties(self, entry: BGADEntry):
+        """Parse a BGI index entry and display the name list."""
+        try:
+            buf = _io.BufferedReader(_io.BytesIO(entry.data))
+            # Try KEY_DOWNLOAD first, fall back to KEY_APK
+            try:
+                bgi = KHUxBGI(buf, file_name='index', key=KEY_DOWNLOAD)
+                archive = bgi.parse()
+            except Exception:
+                buf = _io.BufferedReader(_io.BytesIO(entry.data))
+                bgi = KHUxBGI(buf, file_name='index', key=KEY_APK)
+                archive = bgi.parse()
+
+            self._props_text.append_header("\nBGI Index")
+            self._props_text.append_separator()
+            self._props_text.append_kv("Total Names", str(len(archive.names)))
+            self._props_text.append_kv("Total Entries", str(len(archive.entries)))
+
+            self._props_text.append_header("\nFile List")
+            self._props_text.append_separator()
+            for i, ne in enumerate(archive.names):
+                self._props_text.append_kv(f"  {i:4d}", f"{ne.name}  (entry {ne.entry_index})")
+        except Exception as e:
+            self._props_text.append_dim(f"\n[BGI parse error: {e}]")
+
+    def _is_master_data_container(self) -> bool:
+        """Check if container has master data entries (avatarParts, medal, skill, etc.)."""
+        master_names = {"avatarParts", "medal", "skill", "enemy", "lux",
+                        "quest", "weapon", "item", "ability", "boost"}
+        entry_names = {e.name for e in self.entries}
+        return bool(entry_names & master_names)
+
+    def _show_master_data_properties(self, entry: BGADEntry):
+        """Decrypt and display master data for a numbered entry."""
+        if len(entry.data) < 8:
+            return
+
+        # If this is an avatar container, show full avatar part struct
+        if HAS_AVATAR and self._is_avatar_container():
+            try:
+                part = KHUxAvatar.decrypt_part(entry.data)
+                self._props_text.append_header("\nDecrypted Avatar Part")
+                self._props_text.append_separator()
+                self._props_text.append_kv("Avatar Parts ID", str(part.avatar_parts_id))
+                self._props_text.append_kv("Name", part.name)
+                self._props_text.append_kv("Parts Type", f"{part.parts_type} ({part.parts_type_name})")
+                self._props_text.append_kv("Gender", str(part.gender)
+                                           + (" (Male)" if part.is_male else " (Female)" if part.is_female else ""))
+                self._props_text.append_kv("Combination Type", str(part.combination_type))
+                self._props_text.append_kv("Combination Flag", str(part.combination_flag))
+                self._props_text.append_kv("Position", str(part.position))
+                self._props_text.append_kv("Lux Category", str(part.lux_category))
+                self._props_text.append_kv("Lux Add Rate", str(part.lux_add_rate))
+                self._props_text.append_kv("Set Kind", str(part.set_kind))
+                self._props_text.append_kv("Fixed", "Yes" if part.is_fixed else "No")
+                self._props_text.append_kv("Active", "Yes" if part.is_active else "No")
+                if part.valid_set_cloth > 0:
+                    cloth_ids = part.set_cloth[:part.valid_set_cloth]
+                    self._props_text.append_kv("Set Cloth", ", ".join(str(c) for c in cloth_ids))
+                return
+            except Exception:
+                pass  # Fall through to generic master data
+
+        # Generic master data decryption
+        try:
+            seed, psize, decrypted = decrypt_master_data_payload(entry.data)
+            self._props_text.append_header("\nDecrypted Master Data")
+            self._props_text.append_separator()
+            self._props_text.append_kv("Seed", f"0x{seed:08x}")
+            self._props_text.append_kv("Payload Size", _format_size(psize))
+            self._props_text.append_kv("Decrypted Size", _format_size(len(decrypted)))
+
+            # Try to interpret as text/JSON
+            try:
+                text = decrypted.decode("utf-8")
+                self._props_text.append_kv("Content Type", "Text/UTF-8")
+                preview = text[:200] + ("..." if len(text) > 200 else "")
+                self._props_text.append_dim(f"\n{preview}")
+            except UnicodeDecodeError:
+                self._props_text.append_kv("Content Type", "Binary")
+                self._props_text.append_dim(f"\n{_hex_dump(decrypted, length=128)}")
+        except Exception as e:
+            self._props_text.append_dim(f"\n[Master data decrypt error: {e}]")
+
     # -------------------------------------------------------------------
     # Hex view
     # -------------------------------------------------------------------
@@ -1103,6 +1209,11 @@ class KHUxExplorer(QMainWindow):
             self._preview_notebook.setCurrentIndex(1)  # Text tab
             self._zoom_in_btn.setEnabled(False)
             self._zoom_out_btn.setEnabled(False)
+        elif HAS_MASTER_DATA and self._is_master_data_container() and entry.name.isdigit() and len(entry.data) >= 8:
+            # Try to decrypt master data and show as text preview
+            self._show_master_data_preview(entry)
+            self._zoom_in_btn.setEnabled(False)
+            self._zoom_out_btn.setEnabled(False)
         else:
             self._show_hex_preview(entry)
             self._preview_notebook.setCurrentIndex(2)  # Hex dump tab
@@ -1125,8 +1236,11 @@ class KHUxExplorer(QMainWindow):
         try:
             text = entry.data.decode("utf-8", errors="replace")
 
+            # Pretty-print JSON: explicit json format, .json extension, or content that looks like JSON
             fmt = self.entry_formats.get(entry.name, "unknown")
-            if fmt == "json" or entry.name.endswith(".json"):
+            stripped = text.lstrip()
+            is_json_content = stripped.startswith(("{", "[{", "["))
+            if fmt == "json" or entry.name.endswith(".json") or is_json_content:
                 try:
                     obj = json.loads(text)
                     text = json.dumps(obj, indent=2, ensure_ascii=False)
@@ -1139,6 +1253,32 @@ class KHUxExplorer(QMainWindow):
 
     def _show_hex_preview(self, entry: BGADEntry):
         self._preview_hex.setPlainText(_hex_dump(entry.data, length=4096))
+
+    def _show_master_data_preview(self, entry: BGADEntry):
+        """Decrypt master data and show decrypted content in text or hex preview."""
+        try:
+            seed, psize, decrypted = decrypt_master_data_payload(entry.data)
+            # Try to show as text (possibly JSON)
+            try:
+                text = decrypted.decode("utf-8")
+                stripped = text.lstrip()
+                if stripped.startswith(("{", "[{", "[")):
+                    try:
+                        obj = json.loads(text)
+                        text = json.dumps(obj, indent=2, ensure_ascii=False)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+                self._preview_text.setPlainText(text)
+                self._preview_notebook.setCurrentIndex(1)  # Text tab
+            except UnicodeDecodeError:
+                self._preview_hex.setPlainText(
+                    f"Decrypted master data (seed=0x{seed:08x}, size={psize}):\n\n"
+                    + _hex_dump(decrypted, length=4096)
+                )
+                self._preview_notebook.setCurrentIndex(2)  # Hex dump tab
+        except Exception:
+            self._show_hex_preview(entry)
+            self._preview_notebook.setCurrentIndex(2)
 
     def _is_text_data(self, data: bytes) -> bool:
         if len(data) == 0:

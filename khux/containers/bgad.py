@@ -8,6 +8,38 @@ from khux.utils.compression import decompress
 from khux.utils.crypto import khux_decrypt, chacha8_crypt, BGAD_NONCE_XOR, KEY_APK, KEY_DOWNLOAD, KEY_SAVE
 from khux.utils.common import KHUxFile
 from khux.models.bgad import BGADHeader
+from khux.detect import MAGIC_TABLE
+
+
+_ALL_KEYS = [KEY_APK, KEY_DOWNLOAD, KEY_SAVE]
+
+
+def _guess_key_from_filename(filename: str) -> Optional[bytes]:
+    base = os.path.basename(filename).lower()
+    if base.startswith("misc."):
+        return KEY_APK
+    if base.startswith("extra.") or base.startswith("aliud."):
+        return KEY_DOWNLOAD
+    if base.endswith(".gif"):
+        return None
+    if base.endswith(".jpg"):
+        return None
+    if base.endswith(".mp4") or base.endswith(".png"):
+        return KEY_DOWNLOAD
+    return None
+
+
+def _validate_entry_data(data: bytes) -> bool:
+    if len(data) < 4:
+        return len(data) > 0
+    magic = data[:4]
+    if magic in MAGIC_TABLE:
+        return True
+    if magic[:3] == b"\xEF\xBB\xBF" or magic[:1] == b"<":
+        return True
+    if magic[:1] in (b"[", b"{"):
+        return True
+    return False
 
 
 @dataclass
@@ -101,13 +133,68 @@ class KHUxBGADContainer(KHUxFile):
                  encryption_key: Optional[bytes] = None) -> None:
         super().__init__(file_path, file_name)
         self.encryption_key = encryption_key
+        self._resolved_key = encryption_key
+
+    def _needs_mode3_key(self) -> bool:
+        pos = self.file_handle.tell()
+        try:
+            hdr_bytes = self.file_handle.read(BGADHeader._struct.size)
+            if len(hdr_bytes) < BGADHeader._struct.size:
+                return False
+            hdr = BGADHeader.from_bytes(hdr_bytes)
+            return hdr.encryption_mode == 3
+        except (ValueError, struct.error):
+            return False
+        finally:
+            self.file_handle.seek(pos)
+
+    def _try_key(self, key: bytes) -> bool:
+        pos = self.file_handle.tell()
+        try:
+            bgad = KHUxBGAD(self.file_handle, self.file_name, encryption_key=key)
+            entry = bgad.read_entry()
+            if _validate_entry_data(entry.data):
+                return True
+            # Small entries (index values) won't match any magic.
+            # If we got here without exceptions, decompression (if any) succeeded
+            # and the entry parsed cleanly — the key is likely correct.
+            if len(entry.data) <= 4:
+                return True
+            return False
+        except (IOError, struct.error, ValueError):
+            return False
+        finally:
+            self.file_handle.seek(pos)
+
+    def _resolve_key(self) -> Optional[bytes]:
+        if self.encryption_key is not None:
+            return self.encryption_key
+
+        if not self._needs_mode3_key():
+            return None
+
+        guessed = _guess_key_from_filename(self.file_name)
+        if guessed and self._try_key(guessed):
+            return guessed
+
+        for key in _ALL_KEYS:
+            if key == guessed:
+                continue
+            if self._try_key(key):
+                return key
+
+        return None
 
     def iter_entries(self) -> List[BGADEntry]:
+        if self._resolved_key is None and self.encryption_key is None:
+            self._resolved_key = self._resolve_key()
+
+        key = self._resolved_key or self.encryption_key
         entries = []
         while True:
             try:
                 bgad = KHUxBGAD(self.file_handle, self.file_name,
-                                encryption_key=self.encryption_key)
+                                encryption_key=key)
                 entry = bgad.read_entry()
                 entries.append(entry)
             except (IOError, struct.error, ValueError):
@@ -115,12 +202,16 @@ class KHUxBGADContainer(KHUxFile):
         return entries
 
     def extract(self, extract_dir: str) -> List[BGADEntry]:
+        if self._resolved_key is None and self.encryption_key is None:
+            self._resolved_key = self._resolve_key()
+
+        key = self._resolved_key or self.encryption_key
         os.makedirs(extract_dir, exist_ok=True)
         entries = []
         while True:
             try:
                 bgad = KHUxBGAD(self.file_handle, self.file_name,
-                                encryption_key=self.encryption_key)
+                                encryption_key=key)
                 entry = bgad.extract(extract_dir)
                 entries.append(entry)
             except (IOError, struct.error, ValueError):
