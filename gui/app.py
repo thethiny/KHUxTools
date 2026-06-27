@@ -655,24 +655,11 @@ class KHUxExplorer(QMainWindow):
 
         self._splitter.addWidget(left_widget)
 
-        # --- CENTER PANE: Properties + Hex ---
-        center_notebook = QTabWidget()
-
-        # Properties tab
-        self._props_text = PropertiesTextEdit()
-        center_notebook.addTab(self._props_text, "Properties")
-
-        # Hex view tab
-        self._hex_text = StyledTextEdit(wrap=False)
-        center_notebook.addTab(self._hex_text, "Hex View")
-
-        self._splitter.addWidget(center_notebook)
-
-        # --- RIGHT PANE: Preview ---
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(2, 4, 4, 4)
-        right_layout.setSpacing(2)
+        # --- CENTER PANE: Preview ---
+        center_widget = QWidget()
+        center_layout = QVBoxLayout(center_widget)
+        center_layout.setContentsMargins(2, 4, 2, 4)
+        center_layout.setSpacing(2)
 
         # Preview toolbar
         preview_toolbar = QHBoxLayout()
@@ -703,7 +690,7 @@ class KHUxExplorer(QMainWindow):
         self._export_btn.clicked.connect(self._export_entry)
         preview_toolbar.addWidget(self._export_btn)
 
-        right_layout.addLayout(preview_toolbar)
+        center_layout.addLayout(preview_toolbar)
 
         # Preview notebook
         self._preview_notebook = QTabWidget()
@@ -713,23 +700,47 @@ class KHUxExplorer(QMainWindow):
         self._image_preview.zoom_changed.connect(self._on_zoom_changed)
         self._preview_notebook.addTab(self._image_preview, "Image")
 
-        # Text tab
-        self._preview_text = StyledTextEdit(wrap=True)
+        # Text tab (QTextEdit for HTML support / JSON highlighting)
+        self._preview_text = QTextEdit()
+        self._preview_text.setReadOnly(True)
+        self._preview_text.setFont(QFont("Consolas", 10))
+        self._preview_text.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {COLORS['text_bg']};
+                color: {COLORS['fg']};
+                border: none;
+                padding: 8px;
+                selection-background-color: {COLORS['selection']};
+            }}
+        """)
         self._preview_notebook.addTab(self._preview_text, "Text")
 
         # Hex dump tab
         self._preview_hex = StyledTextEdit(wrap=False)
         self._preview_notebook.addTab(self._preview_hex, "Hex Dump")
 
-        right_layout.addWidget(self._preview_notebook, 1)
-        self._splitter.addWidget(right_widget)
+        center_layout.addWidget(self._preview_notebook, 1)
+        self._splitter.addWidget(center_widget)
 
-        # Set initial splitter proportions (25% / 25% / 50%)
+        # --- RIGHT PANE: Properties + Hex ---
+        right_notebook = QTabWidget()
+
+        # Properties tab
+        self._props_text = PropertiesTextEdit()
+        right_notebook.addTab(self._props_text, "Properties")
+
+        # Hex view tab
+        self._hex_text = StyledTextEdit(wrap=False)
+        right_notebook.addTab(self._hex_text, "Hex View")
+
+        self._splitter.addWidget(right_notebook)
+
+        # Set initial splitter proportions (20% / 50% / 30%)
         QTimer.singleShot(50, self._set_initial_splitter)
 
     def _set_initial_splitter(self):
         w = self.width()
-        self._splitter.setSizes([int(w * 0.25), int(w * 0.25), int(w * 0.50)])
+        self._splitter.setSizes([int(w * 0.20), int(w * 0.50), int(w * 0.30)])
 
     def _build_status_bar(self):
         self._status_bar = self.statusBar()
@@ -759,9 +770,9 @@ class KHUxExplorer(QMainWindow):
     def _open_file(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Open KHUx Container",
+            "Open KHUx File",
             "",
-            "KHUx Containers (*.mp4 *.png *.jpg *.gif);;All Files (*.*)",
+            "KHUx Files (*.mp4 *.png *.jpg *.gif *.lwf *.bin);;All Files (*.*)",
         )
         if path:
             self._load_file(path)
@@ -774,6 +785,22 @@ class KHUxExplorer(QMainWindow):
         self._status_left.setText(f"Loading {os.path.basename(path)}...")
         QApplication.processEvents()
 
+        # Check if it's a standalone file (not a BGAD container)
+        with open(path, "rb") as f:
+            magic = f.read(4)
+
+        if magic == b"\x89BTF":
+            self._load_standalone_btf(path)
+            return
+
+        if magic == b"LWF\x00":
+            self._load_standalone_file(path, "lwf")
+            return
+
+        if magic not in (b"BGAD",):
+            # Try as BGAD anyway — might be a renamed container
+            pass
+
         try:
             container = KHUxBGADContainer(path)
             entries = container.iter_entries()
@@ -784,6 +811,10 @@ class KHUxExplorer(QMainWindow):
 
         self.current_file = path
         self.entries = entries
+
+        # Try to resolve mode 3 names via companion BGI
+        self._resolve_names_via_bgi(path)
+
         self.entry_map = {e.name: e for e in entries}
 
         # Detect formats
@@ -836,6 +867,9 @@ class KHUxExplorer(QMainWindow):
                 continue
 
             parts = entry.name.replace("\\", "/").split("/")
+            parts = [p for p in parts if p]
+            if not parts:
+                parts = [entry.name or "/"]
             fmt = self.entry_formats.get(entry.name, "unknown")
             badge = FORMAT_BADGES.get(fmt, "")
 
@@ -873,6 +907,40 @@ class KHUxExplorer(QMainWindow):
 
             self._tree_items[entry.name] = leaf_item
 
+            # If this is a BGI entry, expand with clickable file list
+            if HAS_BGI and entry.data[:4] == b'\x89BGI':
+                try:
+                    buf = _io.BufferedReader(_io.BytesIO(entry.data))
+                    try:
+                        bgi = KHUxBGI(buf, file_name='index', key=KEY_DOWNLOAD)
+                        archive = bgi.parse()
+                    except Exception:
+                        buf = _io.BufferedReader(_io.BytesIO(entry.data))
+                        bgi = KHUxBGI(buf, file_name='index', key=KEY_APK)
+                        archive = bgi.parse()
+
+                    num_files = len(archive.names)
+                    leaf_item.setText(0, f"  [BGI] {leaf_name} ({num_files} files)")
+
+                    cap = min(num_files, 2000)
+                    for ne in archive.names[:cap]:
+                        ent = archive.entries[ne.entry_index] if ne.entry_index < len(archive.entries) else None
+                        child = QTreeWidgetItem()
+                        child.setText(0, f"  {ne.name}")
+                        child.setData(0, ROLE_ENTRY_NAME, f"__bgi__{ne.entry_index}")
+                        child.setData(0, ROLE_FORMAT, f"{ne.entry_index}|{ent.offset if ent else 0}|{ne.name}")
+                        child.setForeground(0, QColor(COLORS["fg_dim"]))
+                        leaf_item.addChild(child)
+
+                    if num_files > cap:
+                        more = QTreeWidgetItem()
+                        more.setText(0, f"  ... and {num_files - cap} more")
+                        more.setData(0, ROLE_ENTRY_NAME, None)
+                        more.setForeground(0, QColor(COLORS["fg_dim"]))
+                        leaf_item.addChild(more)
+                except Exception:
+                    pass
+
         self.tree.blockSignals(False)
         self.tree.setUpdatesEnabled(True)
 
@@ -899,7 +967,21 @@ class KHUxExplorer(QMainWindow):
         item = items[0]
         entry_name = item.data(0, ROLE_ENTRY_NAME)
         if entry_name is None:
-            # Folder node, not a leaf
+            return
+
+        # Handle BGI child items (show offset/index in properties)
+        if isinstance(entry_name, str) and entry_name.startswith("__bgi__"):
+            bgi_info = item.data(0, ROLE_FORMAT)
+            if bgi_info:
+                parts = bgi_info.split("|", 2)
+                idx, offset, name = int(parts[0]), int(parts[1]), parts[2]
+                self._props_text.clear()
+                self._props_text.append_header("BGI Entry")
+                self._props_text.append_separator()
+                self._props_text.append_kv("Name", name)
+                self._props_text.append_kv("Entry Index", str(idx))
+                self._props_text.append_kv("Offset", f"0x{offset:08x} ({offset})")
+                self._props_text.moveCursor(QTextCursor.MoveOperation.Start)
             return
 
         entry = self.entry_map.get(entry_name)
@@ -1096,10 +1178,9 @@ class KHUxExplorer(QMainWindow):
             pass
 
     def _show_bgi_index_properties(self, entry: BGADEntry):
-        """Parse a BGI index entry and display the name list."""
+        """Parse a BGI index entry and display the name list with offsets."""
         try:
             buf = _io.BufferedReader(_io.BytesIO(entry.data))
-            # Try KEY_DOWNLOAD first, fall back to KEY_APK
             try:
                 bgi = KHUxBGI(buf, file_name='index', key=KEY_DOWNLOAD)
                 archive = bgi.parse()
@@ -1108,24 +1189,50 @@ class KHUxExplorer(QMainWindow):
                 bgi = KHUxBGI(buf, file_name='index', key=KEY_APK)
                 archive = bgi.parse()
 
+            import struct as _struct
+            flags = _struct.unpack_from("<I", entry.data, 8)[0]
+
             self._props_text.append_header("\nBGI Index")
             self._props_text.append_separator()
+            self._props_text.append_kv("Version", str(_struct.unpack_from("<I", entry.data, 4)[0]))
+            self._props_text.append_kv("Encrypted", "Yes" if flags & 1 else "No")
             self._props_text.append_kv("Total Names", str(len(archive.names)))
             self._props_text.append_kv("Total Entries", str(len(archive.entries)))
 
             self._props_text.append_header("\nFile List")
             self._props_text.append_separator()
-            for i, ne in enumerate(archive.names):
-                self._props_text.append_kv(f"  {i:4d}", f"{ne.name}  (entry {ne.entry_index})")
+
+            cap = min(len(archive.names), 500)
+            for i, ne in enumerate(archive.names[:cap]):
+                ent = archive.entries[ne.entry_index] if ne.entry_index < len(archive.entries) else None
+                offset_str = f"0x{ent.offset:08x}" if ent else "?"
+                self._props_text.append_dim(
+                    f"  [{ne.entry_index:5d}] {offset_str}  {ne.name}"
+                )
+
+            if len(archive.names) > cap:
+                self._props_text.append_dim(
+                    f"\n  ... and {len(archive.names) - cap} more entries"
+                )
         except Exception as e:
             self._props_text.append_dim(f"\n[BGI parse error: {e}]")
 
     def _is_master_data_container(self) -> bool:
-        """Check if container has master data entries (avatarParts, medal, skill, etc.)."""
-        master_names = {"avatarParts", "medal", "skill", "enemy", "lux",
-                        "quest", "weapon", "item", "ability", "boost"}
-        entry_names = {e.name for e in self.entries}
-        return bool(entry_names & master_names)
+        """Check if container looks like a master data table (type + hash + numbered entries)."""
+        if len(self.entries) < 3:
+            return False
+        has_hash = any(e.name == "hash" for e in self.entries)
+        has_numbered = any(e.name.isdigit() for e in self.entries)
+        first_not_special = self.entries[0].name not in ("/", "md5", "size", "hash", "revision")
+        return has_hash and has_numbered and first_not_special
+
+    def _get_master_table_type(self) -> str:
+        """Get the table type name from the first entry."""
+        if self.entries:
+            name = self.entries[0].name
+            if name not in ("/", "md5", "size", "hash") and not name.isdigit():
+                return name
+        return ""
 
     def _show_master_data_properties(self, entry: BGADEntry):
         """Decrypt and display master data for a numbered entry."""
@@ -1160,21 +1267,40 @@ class KHUxExplorer(QMainWindow):
 
         # Generic master data decryption
         try:
+            import struct as _struct
             seed, psize, decrypted = decrypt_master_data_payload(entry.data)
-            self._props_text.append_header("\nDecrypted Master Data")
+
+            table_type = self._get_master_table_type()
+            self._props_text.append_header(f"\nDecrypted: {table_type}")
             self._props_text.append_separator()
+
+            if len(decrypted) >= 4:
+                rec_id = _struct.unpack_from("<i", decrypted, 0)[0]
+                self._props_text.append_kv("Record ID", str(rec_id))
+
+            if len(decrypted) >= 8:
+                raw_name = decrypted[4:min(134, len(decrypted))]
+                null = raw_name.find(0)
+                if null >= 0:
+                    raw_name = raw_name[:null]
+                try:
+                    name_str = raw_name.decode("utf-8")
+                    if name_str and all(c.isprintable() or c == ' ' for c in name_str):
+                        self._props_text.append_kv("Name", name_str)
+                except (UnicodeDecodeError, ValueError):
+                    pass
+
+            self._props_text.append_kv("Table Type", table_type)
             self._props_text.append_kv("Seed", f"0x{seed:08x}")
             self._props_text.append_kv("Payload Size", _format_size(psize))
-            self._props_text.append_kv("Decrypted Size", _format_size(len(decrypted)))
 
-            # Try to interpret as text/JSON
             try:
                 text = decrypted.decode("utf-8")
-                self._props_text.append_kv("Content Type", "Text/UTF-8")
+                self._props_text.append_kv("Content", "Text/UTF-8")
                 preview = text[:200] + ("..." if len(text) > 200 else "")
                 self._props_text.append_dim(f"\n{preview}")
             except UnicodeDecodeError:
-                self._props_text.append_kv("Content Type", "Binary")
+                self._props_text.append_kv("Content", "Binary struct")
                 self._props_text.append_dim(f"\n{_hex_dump(decrypted, length=128)}")
         except Exception as e:
             self._props_text.append_dim(f"\n[Master data decrypt error: {e}]")
@@ -1232,6 +1358,77 @@ class KHUxExplorer(QMainWindow):
         except Exception as e:
             self._image_preview.show_error(f"BTF decode error: {e}")
 
+    @staticmethod
+    def _truncate_json(obj, depth: int = 0, max_depth: int = 3):
+        """Truncate nested JSON objects/arrays beyond max_depth."""
+        if depth >= max_depth:
+            if isinstance(obj, dict):
+                return "{...}"
+            elif isinstance(obj, list):
+                return "[...]"
+        if isinstance(obj, dict):
+            return {k: KHUxExplorer._truncate_json(v, depth + 1, max_depth) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [KHUxExplorer._truncate_json(v, depth + 1, max_depth) for v in obj]
+        return obj
+
+    @staticmethod
+    def _json_to_html(text: str) -> str:
+        """Convert pretty-printed JSON text to syntax-highlighted HTML."""
+        import html as _html
+        lines = text.split("\n")
+        html_lines = []
+        for line in lines:
+            stripped = line.lstrip()
+            indent = _html.escape(line[:len(line) - len(stripped)])
+            result_parts = []
+            i = 0
+            s = stripped
+            while i < len(s):
+                ch = s[i]
+                if ch == '"':
+                    # Find end of string
+                    j = i + 1
+                    while j < len(s):
+                        if s[j] == '\\':
+                            j += 2
+                            continue
+                        if s[j] == '"':
+                            j += 1
+                            break
+                        j += 1
+                    token = s[i:j]
+                    escaped = _html.escape(token)
+                    # Check if this is a key (followed by ':')
+                    rest = s[j:].lstrip()
+                    if rest.startswith(":"):
+                        result_parts.append(f'<span style="color:#9CDCFE">{escaped}</span>')
+                    else:
+                        result_parts.append(f'<span style="color:#CE9178">{escaped}</span>')
+                    i = j
+                elif ch in '0123456789' or (ch == '-' and i + 1 < len(s) and s[i + 1] in '0123456789'):
+                    # Number
+                    j = i + 1
+                    while j < len(s) and s[j] in '0123456789.eE+-':
+                        j += 1
+                    token = s[i:j]
+                    result_parts.append(f'<span style="color:#B5CEA8">{_html.escape(token)}</span>')
+                    i = j
+                elif s[i:i+4] in ('true', 'null') or s[i:i+5] == 'false':
+                    length = 5 if s[i:i+5] == 'false' else 4
+                    token = s[i:i+length]
+                    result_parts.append(f'<span style="color:#569CD6">{_html.escape(token)}</span>')
+                    i += length
+                elif s[i:i+5] == '{...}' or s[i:i+5] == '[...]':
+                    token = s[i:i+5]
+                    result_parts.append(f'<span style="color:#808080">{_html.escape(token)}</span>')
+                    i += 5
+                else:
+                    result_parts.append(_html.escape(ch))
+                    i += 1
+            html_lines.append(indent + "".join(result_parts))
+        return "<br>".join(html_lines)
+
     def _show_text_preview(self, entry: BGADEntry):
         try:
             text = entry.data.decode("utf-8", errors="replace")
@@ -1240,10 +1437,20 @@ class KHUxExplorer(QMainWindow):
             fmt = self.entry_formats.get(entry.name, "unknown")
             stripped = text.lstrip()
             is_json_content = stripped.startswith(("{", "[{", "["))
-            if fmt == "json" or entry.name.endswith(".json") or is_json_content:
+            is_json = fmt == "json" or entry.name.endswith(".json") or is_json_content
+
+            if is_json:
                 try:
                     obj = json.loads(text)
-                    text = json.dumps(obj, indent=2, ensure_ascii=False)
+                    truncated = self._truncate_json(obj, depth=0, max_depth=3)
+                    pretty = json.dumps(truncated, indent=2, ensure_ascii=False)
+                    html = self._json_to_html(pretty)
+                    self._preview_text.setHtml(
+                        f'<pre style="font-family:Consolas;font-size:10pt;color:{COLORS["fg"]};'
+                        f'background-color:{COLORS["text_bg"]};margin:0;white-space:pre-wrap;">'
+                        f'{html}</pre>'
+                    )
+                    return
                 except (json.JSONDecodeError, ValueError):
                     pass
 
@@ -1265,10 +1472,18 @@ class KHUxExplorer(QMainWindow):
                 if stripped.startswith(("{", "[{", "[")):
                     try:
                         obj = json.loads(text)
-                        text = json.dumps(obj, indent=2, ensure_ascii=False)
+                        truncated = self._truncate_json(obj, depth=0, max_depth=3)
+                        pretty = json.dumps(truncated, indent=2, ensure_ascii=False)
+                        html = self._json_to_html(pretty)
+                        self._preview_text.setHtml(
+                            f'<pre style="font-family:Consolas;font-size:10pt;color:{COLORS["fg"]};'
+                            f'background-color:{COLORS["text_bg"]};margin:0;white-space:pre-wrap;">'
+                            f'{html}</pre>'
+                        )
                     except (json.JSONDecodeError, ValueError):
-                        pass
-                self._preview_text.setPlainText(text)
+                        self._preview_text.setPlainText(text)
+                else:
+                    self._preview_text.setPlainText(text)
                 self._preview_notebook.setCurrentIndex(1)  # Text tab
             except UnicodeDecodeError:
                 self._preview_hex.setPlainText(
@@ -1379,6 +1594,148 @@ class KHUxExplorer(QMainWindow):
     # -------------------------------------------------------------------
     # Recent files persistence
     # -------------------------------------------------------------------
+    def _resolve_names_via_bgi(self, path: str):
+        """For .mp4 containers, try loading the companion .png BGI to resolve names."""
+        if not path.lower().endswith(".mp4"):
+            return
+        if not self.entries:
+            return
+        # Resolve if mode 3 (encrypted names) or if names look like hashes (hex-only, long)
+        first_name = self.entries[0].name
+        needs_resolve = (
+            self.entries[0].header.encryption_mode == 3
+            or (len(first_name) >= 20 and all(c in "0123456789abcdef" for c in first_name))
+        )
+        if not needs_resolve:
+            return
+        if not HAS_BGI:
+            return
+
+        png_path = path[:-4] + ".png"
+        if not os.path.exists(png_path):
+            return
+
+        try:
+            import io
+            png_container = KHUxBGADContainer(png_path)
+            png_entries = png_container.iter_entries()
+            bgi_data = None
+            for pe in png_entries:
+                if pe.data[:4] == b"\x89BGI":
+                    bgi_data = pe.data
+                    break
+            if not bgi_data:
+                return
+
+            from khux.utils.crypto import KEY_APK, KEY_DOWNLOAD
+            archive = None
+            for key in [KEY_APK, KEY_DOWNLOAD]:
+                try:
+                    bgi = KHUxBGI(
+                        io.BufferedReader(io.BytesIO(bgi_data)),
+                        file_name="index", key=key,
+                    )
+                    archive = bgi.parse()
+                    if archive.names:
+                        break
+                except Exception:
+                    archive = None
+
+            if not archive or not archive.names:
+                return
+
+            offset_to_name = {}
+            for ne in archive.names:
+                if ne.entry_index < len(archive.entries):
+                    offset_to_name[archive.entries[ne.entry_index].offset] = ne.name
+
+            resolved = 0
+            for entry in self.entries:
+                bgi_name = offset_to_name.get(entry.offset)
+                if bgi_name:
+                    entry.name = bgi_name
+                    resolved += 1
+
+            if resolved > 0:
+                self._status_left.setText(
+                    f"Resolved {resolved} names from BGI index"
+                )
+
+        except Exception:
+            pass
+
+    def _load_standalone_btf(self, path: str):
+        """Load a standalone BTF image file (not inside a BGAD container)."""
+        with open(path, "rb") as f:
+            data = f.read()
+
+        fname = os.path.basename(path)
+        dummy_header = BGADHeader(
+            magic=b"BGAD", version=2, flags=0, header_size=24,
+            name_length=len(fname), encryption_mode=0, compression_mode=0,
+            data_size=len(data), decompressed_size=len(data),
+        )
+        entry = BGADEntry(offset=0, name=fname, data=data, header=dummy_header)
+
+        self.current_file = path
+        self.entries = [entry]
+        self.entry_map = {entry.name: entry}
+        self.entry_formats = {entry.name: "btf"}
+
+        norm_path = os.path.normpath(path)
+        if norm_path in self.recent_files:
+            self.recent_files.remove(norm_path)
+        self.recent_files.insert(0, norm_path)
+        self.recent_files = self.recent_files[:10]
+        self._save_recent_files()
+        self._rebuild_recent_menu()
+
+        self._file_label.setText(fname)
+        self._file_label.setStyleSheet(f"color: {COLORS['fg_bright']};")
+        self._populate_tree()
+        self._status_left.setText(f"Loaded {fname}")
+        self._status_right.setText("1 entry (standalone BTF)")
+
+        self.tree.expandAll()
+        if self.tree.topLevelItemCount() > 0:
+            self.tree.setCurrentItem(self.tree.topLevelItem(0))
+
+    def _load_standalone_file(self, path: str, fmt: str):
+        """Load a standalone non-BGAD file."""
+        with open(path, "rb") as f:
+            data = f.read()
+
+        fname = os.path.basename(path)
+        dummy_header = BGADHeader(
+            magic=b"BGAD", version=2, flags=0, header_size=24,
+            name_length=len(fname), encryption_mode=0, compression_mode=0,
+            data_size=len(data), decompressed_size=len(data),
+        )
+        entry = BGADEntry(offset=0, name=fname, data=data, header=dummy_header)
+
+        self.current_file = path
+        self.entries = [entry]
+        self.entry_map = {entry.name: entry}
+        self.entry_formats = {entry.name: fmt}
+
+        norm_path = os.path.normpath(path)
+        if norm_path in self.recent_files:
+            self.recent_files.remove(norm_path)
+        self.recent_files.insert(0, norm_path)
+        self.recent_files = self.recent_files[:10]
+        self._save_recent_files()
+        self._rebuild_recent_menu()
+
+        self._file_label.setText(fname)
+        self._file_label.setStyleSheet(f"color: {COLORS['fg_bright']};")
+        self._populate_tree()
+        self._status_left.setText(f"Loaded {fname}")
+        self._status_right.setText(f"1 entry (standalone {fmt.upper()})")
+
+        self.tree.expandAll()
+        if self.tree.topLevelItemCount() > 0:
+            self.tree.setCurrentItem(self.tree.topLevelItem(0))
+
     def _recent_file_path(self) -> str:
         return os.path.join(".cache", "recent_files.json")
 
