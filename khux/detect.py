@@ -16,17 +16,37 @@ MAGIC_TABLE = {
 }
 
 
+def _is_printable_text(data: bytes) -> bool:
+    try:
+        text = data.decode("utf-8")
+        return all(c.isprintable() or c in "\r\n\t" for c in text)
+    except (UnicodeDecodeError, ValueError):
+        return False
+
+
 def detect_format(data: bytes) -> str:
     if len(data) < 4:
+        if len(data) > 0 and _is_printable_text(data):
+            return "text"
         return "unknown"
     magic = data[:4]
     fmt = MAGIC_TABLE.get(magic)
     if fmt:
         return fmt
-    if data[:3] == b"\xEF\xBB\xBF" or data[:1] == b"<":
+    if data[:3] == b"\xEF\xBB\xBF":
         return "plist"
+    if data[:5] == b"<?xml":
+        return "plist"
+    if data[:1] == b"<" and len(data) > 8 and (b"</" in data[:256] or b"<dict" in data[:256] or b"<plist" in data[:256]):
+        return "plist"
+    if data[:1] in (b"[", b"{") and len(data) > 4:
+        return "json"
+    if len(data) <= 4 and _is_printable_text(data):
+        return "text"
     if len(data) == 4:
         return "index"
+    if _is_printable_text(data[:64]):
+        return "text"
     return "unknown"
 
 

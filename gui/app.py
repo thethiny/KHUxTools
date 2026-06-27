@@ -48,7 +48,7 @@ except ImportError:
     HAS_AVATAR = False
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageDraw, ImageFont
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
@@ -97,6 +97,8 @@ FORMAT_COLORS = {
     "akb":     "#ce9178",
     "plist":   "#dcdcaa",
     "json":    "#dcdcaa",
+    "text":    "#d4d4d4",
+    "ttf":     "#e0a050",
     "stg":     "#569cd6",
     "map":     "#569cd6",
     "bgi":     "#d7ba7d",
@@ -109,6 +111,9 @@ FORMAT_BADGES = {
     "lwf":     "[LWF]",
     "akb":     "[AKB]",
     "plist":   "[PLIST]",
+    "json":    "[JSON]",
+    "text":    "[TXT]",
+    "ttf":     "[TTF]",
     "stg":     "[STG]",
     "map":     "[MAP]",
     "bgi":     "[BGI]",
@@ -279,6 +284,114 @@ class ImagePreviewWidget(QScrollArea):
         self._label.setText(text)
         self._label.setStyleSheet(f"color: {COLORS['error']}; font: 10pt 'Consolas';")
         self._label.adjustSize()
+
+
+# ---------------------------------------------------------------------------
+# Styled read-only text widget
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Audio player widget
+# ---------------------------------------------------------------------------
+class AudioPlayerWidget(QWidget):
+    """Simple audio player for OGG files extracted from AKB entries."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        self._info_label = QLabel("No audio loaded")
+        self._info_label.setStyleSheet(f"color: {COLORS['fg']}; font: 10pt 'Consolas';")
+        self._info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._info_label)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        self._play_btn = QPushButton("Play")
+        self._play_btn.setEnabled(False)
+        self._play_btn.setFixedWidth(80)
+        self._play_btn.clicked.connect(self._toggle_play)
+        btn_layout.addWidget(self._play_btn)
+
+        self._stop_btn = QPushButton("Stop")
+        self._stop_btn.setEnabled(False)
+        self._stop_btn.setFixedWidth(80)
+        self._stop_btn.clicked.connect(self._stop)
+        btn_layout.addWidget(self._stop_btn)
+
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+        layout.addStretch()
+
+        self._player = None
+        self._audio_output = None
+        self._temp_file = None
+
+        try:
+            from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+            self._player = QMediaPlayer()
+            self._audio_output = QAudioOutput()
+            self._player.setAudioOutput(self._audio_output)
+            self._has_media = True
+        except ImportError:
+            self._has_media = False
+
+    def load_ogg(self, ogg_data: bytes, info_text: str = ""):
+        self._stop()
+        self._info_label.setText(info_text or "Audio loaded")
+
+        if not self._has_media:
+            self._info_label.setText("Audio playback unavailable\n(PyQt6.QtMultimedia not found)\n\nExport as .ogg to play externally")
+            return
+
+        import tempfile
+        if self._temp_file:
+            try:
+                os.unlink(self._temp_file)
+            except OSError:
+                pass
+
+        fd, path = tempfile.mkstemp(suffix=".ogg")
+        os.write(fd, ogg_data)
+        os.close(fd)
+        self._temp_file = path
+
+        from PyQt6.QtCore import QUrl
+        self._player.setSource(QUrl.fromLocalFile(path))
+        self._play_btn.setEnabled(True)
+        self._stop_btn.setEnabled(True)
+
+    def clear_audio(self):
+        self._stop()
+        self._info_label.setText("No audio loaded")
+        self._play_btn.setEnabled(False)
+        self._stop_btn.setEnabled(False)
+
+    def _toggle_play(self):
+        if not self._player:
+            return
+        from PyQt6.QtMultimedia import QMediaPlayer
+        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._player.pause()
+            self._play_btn.setText("Play")
+        else:
+            self._player.play()
+            self._play_btn.setText("Pause")
+
+    def _stop(self):
+        if self._player:
+            self._player.stop()
+        self._play_btn.setText("Play")
+
+    def cleanup(self):
+        self._stop()
+        if self._temp_file:
+            try:
+                os.unlink(self._temp_file)
+            except OSError:
+                pass
+            self._temp_file = None
 
 
 # ---------------------------------------------------------------------------
@@ -695,10 +808,14 @@ class KHUxExplorer(QMainWindow):
         # Preview notebook
         self._preview_notebook = QTabWidget()
 
-        # Image tab
+        # Preview tab (images)
         self._image_preview = ImagePreviewWidget()
         self._image_preview.zoom_changed.connect(self._on_zoom_changed)
-        self._preview_notebook.addTab(self._image_preview, "Image")
+        self._preview_notebook.addTab(self._image_preview, "Preview")
+
+        # Audio tab
+        self._audio_player = AudioPlayerWidget()
+        self._preview_notebook.addTab(self._audio_player, "Audio")
 
         # Text tab (QTextEdit for HTML support / JSON highlighting)
         self._preview_text = QTextEdit()
@@ -820,7 +937,9 @@ class KHUxExplorer(QMainWindow):
         # Detect formats
         self.entry_formats = {}
         for e in entries:
-            if e.data and len(e.data) >= 4:
+            if e.name.lower().endswith(".ttf"):
+                self.entry_formats[e.name] = "ttf"
+            elif e.data and len(e.data) >= 4:
                 self.entry_formats[e.name] = detect_format(e.data[:4])
             else:
                 self.entry_formats[e.name] = "unknown"
@@ -1107,6 +1226,8 @@ class KHUxExplorer(QMainWindow):
         # Format-specific info
         if fmt == "btf" and HAS_BTF:
             self._show_btf_properties(entry)
+        elif fmt == "akb":
+            self._show_akb_properties(entry)
         elif fmt in ("plist", "json"):
             self._show_text_properties(entry)
 
@@ -1146,6 +1267,24 @@ class KHUxExplorer(QMainWindow):
 
         except Exception as e:
             self._props_text.append_dim(f"\n[BTF parse error: {e}]")
+
+    def _show_akb_properties(self, entry: BGADEntry):
+        try:
+            from khux.formats.akb import parse_akb
+            akb = parse_akb(entry.data)
+            self._props_text.append_header("\nAKB Audio")
+            self._props_text.append_separator()
+            self._props_text.append_kv("Version", str(akb.version))
+            self._props_text.append_kv("Header Size", f"{akb.header_size} bytes")
+            self._props_text.append_kv("OGG Offset", str(akb.ogg_offset))
+            self._props_text.append_kv("OGG Size", _format_size(len(akb.ogg_data)))
+            if akb.sample_rate:
+                self._props_text.append_kv("Sample Rate", f"{akb.sample_rate} Hz")
+            if akb.channels:
+                self._props_text.append_kv("Channels", str(akb.channels))
+            self._props_text.append_dim("\nExport as .ogg to play in any audio player")
+        except Exception as e:
+            self._props_text.append_dim(f"\n[AKB parse error: {e}]")
 
     def _show_text_properties(self, entry: BGADEntry):
         try:
@@ -1325,24 +1464,35 @@ class KHUxExplorer(QMainWindow):
         self._zoom_level = 1.0
         self._zoom_label.setText("100%")
 
+        self._audio_player.clear_audio()
+
         if fmt == "btf" and HAS_BTF and HAS_PIL:
             self._show_btf_preview(entry)
-            self._preview_notebook.setCurrentIndex(0)  # Image tab
+            self._preview_notebook.setCurrentIndex(0)  # Preview tab
             self._zoom_in_btn.setEnabled(True)
             self._zoom_out_btn.setEnabled(True)
+        elif fmt == "ttf" and HAS_PIL:
+            self._show_ttf_preview(entry)
+            self._preview_notebook.setCurrentIndex(0)  # Preview tab
+            self._zoom_in_btn.setEnabled(True)
+            self._zoom_out_btn.setEnabled(True)
+        elif fmt == "akb":
+            self._show_akb_audio(entry)
+            self._preview_notebook.setCurrentIndex(1)  # Audio tab
+            self._zoom_in_btn.setEnabled(False)
+            self._zoom_out_btn.setEnabled(False)
         elif fmt in ("plist", "json") or self._is_text_data(entry.data):
             self._show_text_preview(entry)
-            self._preview_notebook.setCurrentIndex(1)  # Text tab
+            self._preview_notebook.setCurrentIndex(2)  # Text tab
             self._zoom_in_btn.setEnabled(False)
             self._zoom_out_btn.setEnabled(False)
         elif HAS_MASTER_DATA and self._is_master_data_container() and entry.name.isdigit() and len(entry.data) >= 8:
-            # Try to decrypt master data and show as text preview
             self._show_master_data_preview(entry)
             self._zoom_in_btn.setEnabled(False)
             self._zoom_out_btn.setEnabled(False)
         else:
             self._show_hex_preview(entry)
-            self._preview_notebook.setCurrentIndex(2)  # Hex dump tab
+            self._preview_notebook.setCurrentIndex(3)  # Hex dump tab
             self._zoom_in_btn.setEnabled(False)
             self._zoom_out_btn.setEnabled(False)
 
@@ -1357,6 +1507,85 @@ class KHUxExplorer(QMainWindow):
 
         except Exception as e:
             self._image_preview.show_error(f"BTF decode error: {e}")
+
+    def _show_ttf_preview(self, entry: BGADEntry):
+        """Render a TTF font preview: sample header + glyph grid."""
+        import tempfile
+        try:
+            # Write font bytes to a temp file so PIL can load it
+            with tempfile.NamedTemporaryFile(suffix=".ttf", delete=False) as tmp:
+                tmp.write(entry.data)
+                tmp_path = tmp.name
+
+            try:
+                header_font = ImageFont.truetype(tmp_path, 32)
+                grid_font = ImageFont.truetype(tmp_path, 20)
+            finally:
+                os.unlink(tmp_path)
+
+            bg_color = (30, 30, 30)
+            fg_color = (204, 204, 204)
+            box_fg = (224, 224, 224)
+            box_bg = (45, 45, 48)
+            box_border = (80, 80, 80)
+            padding = 20
+
+            # --- Header ---
+            sample_text = "AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz 0123456789 !@#$%^&*()"
+            # Measure header text
+            tmp_img = Image.new("RGB", (1, 1))
+            tmp_draw = ImageDraw.Draw(tmp_img)
+            header_bbox = tmp_draw.textbbox((0, 0), sample_text, font=header_font)
+            header_w = header_bbox[2] - header_bbox[0] + padding * 2
+            header_h = header_bbox[3] - header_bbox[1] + padding
+
+            # --- Glyph grid ---
+            # Characters 32-126 (printable ASCII)
+            glyphs = [chr(c) for c in range(32, 127)]
+            cell_size = 36
+            cols = max(1, (max(header_w, 800) - padding * 2) // cell_size)
+            rows = (len(glyphs) + cols - 1) // cols
+
+            grid_w = cols * cell_size
+            grid_h = rows * cell_size
+
+            # Final image dimensions
+            img_w = max(header_w, grid_w + padding * 2)
+            img_h = padding + header_h + padding + grid_h + padding
+
+            img = Image.new("RGB", (img_w, img_h), bg_color)
+            draw = ImageDraw.Draw(img)
+
+            # Draw header text
+            draw.text((padding, padding), sample_text, fill=fg_color, font=header_font)
+
+            # Draw glyph grid
+            grid_top = padding + header_h + padding
+            grid_left = padding
+            for idx, ch in enumerate(glyphs):
+                col = idx % cols
+                row = idx // cols
+                x = grid_left + col * cell_size
+                y = grid_top + row * cell_size
+
+                # Box background and border
+                draw.rectangle([x, y, x + cell_size - 1, y + cell_size - 1],
+                               fill=box_bg, outline=box_border)
+
+                # Center the glyph in the cell
+                ch_bbox = draw.textbbox((0, 0), ch, font=grid_font)
+                ch_w = ch_bbox[2] - ch_bbox[0]
+                ch_h = ch_bbox[3] - ch_bbox[1]
+                cx = x + (cell_size - ch_w) // 2 - ch_bbox[0]
+                cy = y + (cell_size - ch_h) // 2 - ch_bbox[1]
+                draw.text((cx, cy), ch, fill=box_fg, font=grid_font)
+
+            self._current_pil_image = img
+            pixmap = _pil_image_to_qpixmap(img)
+            self._image_preview.set_pixmap(pixmap)
+
+        except Exception as e:
+            self._image_preview.show_error(f"TTF preview error: {e}")
 
     @staticmethod
     def _truncate_json(obj, depth: int = 0, max_depth: int = 3):
@@ -1454,9 +1683,41 @@ class KHUxExplorer(QMainWindow):
                 except (json.JSONDecodeError, ValueError):
                     pass
 
+            # Pretty-print XML/plist
+            if fmt == "plist" or stripped.startswith("<?xml") or stripped.startswith("<plist"):
+                try:
+                    import xml.dom.minidom
+                    dom = xml.dom.minidom.parseString(entry.data)
+                    pretty_xml = dom.toprettyxml(indent="  ")
+                    lines = pretty_xml.split("\n")
+                    if lines and lines[0].startswith("<?xml"):
+                        lines = lines[1:]
+                    self._preview_text.setPlainText("\n".join(lines))
+                    return
+                except Exception:
+                    pass
+
             self._preview_text.setPlainText(text)
         except Exception as e:
             self._preview_text.setPlainText(f"Decode error: {e}")
+
+    def _show_akb_audio(self, entry: BGADEntry):
+        """Load AKB audio into the audio player widget."""
+        try:
+            from khux.formats.akb import parse_akb
+            akb = parse_akb(entry.data)
+
+            info = f"AKB Audio — {_format_size(len(akb.ogg_data))} OGG"
+            if akb.sample_rate:
+                info += f" — {akb.sample_rate} Hz"
+            if akb.channels:
+                info += f" — {akb.channels}ch"
+
+            self._audio_player.load_ogg(akb.ogg_data, info)
+        except Exception as e:
+            self._audio_player.clear_audio()
+            self._preview_text.setPlainText(f"AKB parse error: {e}")
+            self._preview_notebook.setCurrentIndex(2)
 
     def _show_hex_preview(self, entry: BGADEntry):
         self._preview_hex.setPlainText(_hex_dump(entry.data, length=4096))
@@ -1484,16 +1745,16 @@ class KHUxExplorer(QMainWindow):
                         self._preview_text.setPlainText(text)
                 else:
                     self._preview_text.setPlainText(text)
-                self._preview_notebook.setCurrentIndex(1)  # Text tab
+                self._preview_notebook.setCurrentIndex(2)  # Text tab
             except UnicodeDecodeError:
                 self._preview_hex.setPlainText(
                     f"Decrypted master data (seed=0x{seed:08x}, size={psize}):\n\n"
                     + _hex_dump(decrypted, length=4096)
                 )
-                self._preview_notebook.setCurrentIndex(2)  # Hex dump tab
+                self._preview_notebook.setCurrentIndex(3)  # Hex dump tab
         except Exception:
             self._show_hex_preview(entry)
-            self._preview_notebook.setCurrentIndex(2)
+            self._preview_notebook.setCurrentIndex(3)
 
     def _is_text_data(self, data: bytes) -> bool:
         if len(data) == 0:
@@ -1546,6 +1807,23 @@ class KHUxExplorer(QMainWindow):
                         img = btf.decode(use_canvas=True)
                         img.save(path, "PNG")
                         self._status_left.setText(f"Exported: {os.path.basename(path)}")
+                    except Exception as e:
+                        QMessageBox.critical(self, "Export Error", str(e))
+                else:
+                    self._write_raw(path, entry.data)
+        elif fmt == "akb":
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Export Audio",
+                os.path.splitext(default_name)[0] + ".ogg",
+                "OGG Audio (*.ogg);;Raw AKB (*.*)",
+            )
+            if path:
+                if path.lower().endswith(".ogg"):
+                    try:
+                        from khux.formats.akb import parse_akb
+                        akb = parse_akb(entry.data)
+                        self._write_raw(path, akb.ogg_data)
                     except Exception as e:
                         QMessageBox.critical(self, "Export Error", str(e))
                 else:

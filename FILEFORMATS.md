@@ -13,7 +13,7 @@ Complete documentation of all known file formats in Kingdom Hearts Union Cross
 - [Encryption Schemes](#encryption-schemes)
   - [KHUx LCG (Modes 1 & 2)](#khux-lcg-modes-1--2)
   - [MSVC LCG (Master Data)](#msvc-lcg-master-data)
-  - [ChaCha20 (Mode 3)](#chacha20-mode-3)
+  - [ChaCha8 (Mode 3)](#chacha20-mode-3)
 - [Image Formats](#image-formats)
   - [BTF](#btf---binary-texture-format)
 - [Animation Formats](#animation-formats)
@@ -58,7 +58,7 @@ Offset  Size  Type    Field             Description
 0x06    2     u16     flags             Bit 2 (0x04): has 8-byte nonce (mode 3)
 0x08    2     u16     header_size       Always 24 (0x18)
 0x0A    2     u16     name_length       Length of the name field in bytes
-0x0C    2     u16     encryption_mode   0=none, 1=byte LCG, 2=dword LCG, 3=ChaCha20
+0x0C    2     u16     encryption_mode   0=none, 1=byte LCG, 2=dword LCG, 3=ChaCha8
 0x0E    2     u16     compression_mode  0=none, 2=zlib
 0x10    4     u32     data_size         Size of data section (includes 8-byte nonce for mode 3)
 0x14    4     u32     decompressed_size Original size before compression
@@ -77,14 +77,14 @@ Offset  Size  Type    Field             Description
 
 - **Mode 0**: No decryption
 - **Modes 1, 2**: Same LCG cipher as data, seed = `data_size`
-- **Mode 3**: Unsolved (see [ChaCha20 section](#chacha20-mode-3))
+- **Mode 3**: Unsolved (see [ChaCha8 section](#chacha20-mode-3))
 
 #### Data Decryption
 
 - **Mode 0**: No decryption
 - **Mode 1**: Byte-wise KHUx LCG XOR, seed = `name_length`
 - **Mode 2**: DWORD-wise KHUx LCG XOR, seed = `name_length`
-- **Mode 3**: ChaCha20, nonce = last 8 bytes of data section XOR'd with
+- **Mode 3**: ChaCha8, nonce = last 8 bytes of data section XOR'd with
   `0x62C0D9499B158372`
 
 After decryption, if `compression_mode != 0`, the data is zlib-decompressed.
@@ -110,7 +110,7 @@ inside a `.png` container paired with a `.mp4` container.
 Offset  Size  Type    Field     Description
 0x00    4     char[4] magic     "\x89BGI" (0x89424749)
 0x04    4     u32     version   Must be 3
-0x08    4     u32     flags     Bit 0: encrypted with ChaCha20
+0x08    4     u32     flags     Bit 0: encrypted with ChaCha8
 ```
 
 #### Data Layout (after header, or after decryption)
@@ -149,7 +149,7 @@ counts with libc++-style rehashing.
 When `flags & 1`:
 - Last 8 bytes of the file (after header) are the nonce
 - Nonce is XOR'd with `0xC4DB340F0A3574EA` (bytes: `EA 74 35 0A 0F 34 DB C4`)
-- Decryption uses ChaCha20 with the BGTEncryptionKeyConst key
+- Decryption uses ChaCha8 with the BGTEncryptionKeyConst key
 - Decryption covers all bytes between the header and the nonce
 
 **Source**: Decompiled from `ReadBGIFile` (ea=0xA18CB8) in libcocos2dcpp v5.
@@ -216,45 +216,49 @@ extraction.
 
 ---
 
-### ChaCha20 (Mode 3)
+### ChaCha8 (Mode 3)
 
 Used for BGAD mode 3 and encrypted BGI files. The implementation is the
-original Bernstein ChaCha20 (eSTREAM variant, 8-byte nonce, 64-bit counter),
-NOT the IETF variant (12-byte nonce).
+original Bernstein ChaCha with **8 rounds** (4 double-rounds), eSTREAM variant
+with 8-byte nonce and 64-bit counter. NOT ChaCha20 (which uses 20 rounds).
 
-**Key**: 32 bytes, stored as `BGTEncryptionKeyConst` in the `.rodata` section
-of libcocos2dcpp.so:
-```
-5C A5 6C 58 27 FA 15 CF 1E CE 2A 37 18 09 53 B8
-01 DE BF D0 A7 1D D6 AA 6D D1 D4 F4 14 A5 FB C4
-```
+Credit: bnnm (khuxdecrypt3) identified the round count as 8.
 
-Confirmed at the same bytes in v1.0.1, v1.2.3 (arm7), and v1.2.3 (armeabi)
-binaries.
+**Keys**: Three 32-byte keys in the binary, selected by file origin:
+
+| Key | Name | Hex | Use |
+|-----|------|-----|-----|
+| KEY_APK | BGTEncryptionKeyConst | `5CA56C58...` | misc.mp4/misc.png (APK-bundled) |
+| KEY_DOWNLOAD | unk_E6EE54 | `3C8499BF...` | Downloaded files in r/ folder, extra.* |
+| KEY_SAVE | unk_E298B0 | `FB32833C...` | Saved/cache files |
+
+Key selection logic (from bnnm's khuxdecrypt3):
+- `misc.*` files (small, APK-bundled) → KEY_APK
+- Other `.mp4`/`.png` files → KEY_DOWNLOAD
+- `.gif`/`.jpg` files with mode 3 → per-user personal key (unsolved for arbitrary files)
 
 **BGAD nonce XOR**: `62 C0 D9 49 9B 15 83 72`
 **BGI nonce XOR**: `EA 74 35 0A 0F 34 DB C4`
 
-**State layout** (standard ChaCha20):
+**State layout** (standard ChaCha):
 ```
-[ "expa"  "nd 3"  "2-by"  "te k" ]   constants
+[ "expa"  "nd 3"  "2-by"  "te k" ]   constants (sigma for 32-byte key)
 [ key[0]  key[1]  key[2]  key[3]  ]   key words 0-3
 [ key[4]  key[5]  key[6]  key[7]  ]   key words 4-7
 [ ctr_lo  ctr_hi  nonce0  nonce1  ]   counter + nonce
 ```
 
+For 16-byte keys, uses tau constant ("expand 16-byte k") and key repeated.
+
 **ECRYPT functions** in libcocos2dcpp v5:
 - `ECRYPT_init` (0xA81E58) — no-op
 - `ECRYPT_keysetup` (0xA81E5C) — sets up state with key + constants
 - `ECRYPT_ivsetup` (0xA81FF8) — sets counter to 0, loads 8-byte nonce
-- `ECRYPT_encrypt_bytes` (0xA82040) — ChaCha20 block cipher
+- `ECRYPT_encrypt_bytes` (0xA82040) — ChaCha8 block cipher (8 rounds)
 - `ECRYPT_decrypt_bytes` (0xA825D8) — same as encrypt (stream cipher)
 
-**Status**: Implementation verified against RFC test vectors and PyCryptodome.
-However, decryption of actual game files produces garbage despite the confirmed
-key. The key may be transformed at runtime, or there may be an unnamed function
-handling mode 3 reads with different parameters. **This is an open
-investigation.**
+**Status**: **SOLVED.** All hardcoded-key files decrypt correctly. Per-user
+personal key files (.gif/.jpg with mode 3) require the user's save data.
 
 ---
 
@@ -510,9 +514,25 @@ unknown. Extracted as raw binary.
 
 ### AKB - Audio Bank
 
-**Magic**: `AKB ` (0x414B4220, note trailing space). Audio container format
-used by the game's sound system. Contains sound effects and music. Structure is
-not reverse-engineered. May be compatible with CRI middleware or a custom format.
+**Magic**: `AKB ` (0x414B4220, note trailing space).
+
+#### Header
+
+```
+Offset  Size  Type  Field        Description
+0x00    4     -     magic        "AKB " (0x414B4220)
+0x04    2     u16   version      Format version (2 in known files)
+0x06    2     u16   header_size  Size of AKB header (68 in known files)
+0x08    4     u32   total_size   Total file size including header
+```
+
+#### Audio Data
+
+OGG Vorbis audio data starts at offset 204 (after a 204-byte header block).
+The OGG data can be extracted directly and played in any audio player.
+
+To extract: strip the first 204 bytes (or find the `OggS` magic) and save
+the remainder as `.ogg`.
 
 ---
 
@@ -622,16 +642,16 @@ Key functions in the decompiled libcocos2dcpp (v5, IDA9):
 | Function          | Address    | File                       | Purpose                    |
 |-------------------|------------|----------------------------|----------------------------|
 | `sub_A16F20`      | 0xA16F20   | libcocos2dcpp_0033.c:1535  | BGAD read + decrypt        |
-| `DecryptBGAD`     | 0xA17378   | libcocos2dcpp_0033.c:1766  | ChaCha20 decrypt for mode 3|
+| `DecryptBGAD`     | 0xA17378   | libcocos2dcpp_0033.c:1766  | ChaCha8 decrypt for mode 3|
 | `sub_A174E0`      | 0xA174E0   | libcocos2dcpp_0033.c:1803  | BGAD write + encrypt       |
 | `sub_A17B18`      | 0xA17B18   | libcocos2dcpp_0033.c:2117  | Key initialization         |
 | `ReadBGIFile`     | 0xA18CB8   | libcocos2dcpp_0033.c:3017  | BGI read + parse           |
 | `sub_3933B4`      | 0x3933B4   | libcocos2dcpp_0000.c:4680  | MSVC LCG encryption        |
 | `sub_39311C`      | 0x39311C   | libcocos2dcpp_0000.c       | Buffer alloc + seed gen    |
 | `sub_6CF7C8`      | 0x6CF7C8   | libcocos2dcpp_0005.c       | AvatarParts struct parse   |
-| `ECRYPT_keysetup` | 0xA81E5C   | libcocos2dcpp_0035.c:8997  | ChaCha20 key setup         |
-| `ECRYPT_ivsetup`  | 0xA81FF8   | libcocos2dcpp_0035.c:9065  | ChaCha20 IV setup          |
-| `ECRYPT_encrypt`  | 0xA82040   | libcocos2dcpp_0035.c:9075  | ChaCha20 cipher            |
+| `ECRYPT_keysetup` | 0xA81E5C   | libcocos2dcpp_0035.c:8997  | ChaCha8 key setup         |
+| `ECRYPT_ivsetup`  | 0xA81FF8   | libcocos2dcpp_0035.c:9065  | ChaCha8 IV setup          |
+| `ECRYPT_encrypt`  | 0xA82040   | libcocos2dcpp_0035.c:9075  | ChaCha8 cipher            |
 
 **Key location in binaries:**
 - v1.0.1 (IDA7): `libcocos2dcpp.so` offset 0xEC6790

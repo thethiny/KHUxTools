@@ -1,6 +1,6 @@
 # Mode 3 (ChaCha20) Encryption Research
 
-Status: **MECHANISM SOLVED** — key is per-user, stored in save data. Need matching save file for each device's encrypted files.
+Status: **SOLVED** — ChaCha8 (8 rounds, not 20). Three hardcoded keys for different file origins. Per-user key for .gif/.jpg mode 3 files.
 
 ---
 
