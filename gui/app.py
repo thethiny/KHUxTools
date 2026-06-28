@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QStatusBar, QMenuBar, QMenu, QFileDialog, QMessageBox,
     QScrollArea, QSizePolicy, QFrame,
 )
-from PyQt6.QtCore import Qt, QSize, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QSize, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import (
     QPixmap, QImage, QPalette, QColor, QFont, QAction, QShortcut,
     QKeySequence, QIcon, QWheelEvent, QPainter, QBrush, QClipboard,
@@ -289,14 +289,42 @@ class ImagePreviewWidget(QScrollArea):
 # ---------------------------------------------------------------------------
 # Styled read-only text widget
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Background file loader
+# ---------------------------------------------------------------------------
+class FileLoaderWorker(QThread):
+    """Loads a BGAD container in a background thread."""
+    finished = pyqtSignal(object, list, str)  # (container, entries, path)
+    error = pyqtSignal(str)
+    progress = pyqtSignal(str)
+
+    def __init__(self, path: str, parent=None):
+        super().__init__(parent)
+        self._path = path
+
+    def run(self):
+        try:
+            self.progress.emit(f"Parsing {os.path.basename(self._path)}...")
+            container = KHUxBGADContainer(self._path)
+            self.progress.emit("Decrypting entries...")
+            entries = container.iter_entries()
+            self.finished.emit(container, entries, self._path)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 # ---------------------------------------------------------------------------
 # Audio player widget
 # ---------------------------------------------------------------------------
 class AudioPlayerWidget(QWidget):
-    """Simple audio player for OGG files extracted from AKB entries."""
+    """Audio player with seekbar for OGG files extracted from AKB entries."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        from PyQt6.QtWidgets import QSlider
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
 
@@ -305,8 +333,53 @@ class AudioPlayerWidget(QWidget):
         self._info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._info_label)
 
+        # Seekbar — click anywhere to jump
+        class ClickSlider(QSlider):
+            def mousePressEvent(self, event):
+                if event.button() == Qt.MouseButton.LeftButton and self.maximum() > 0:
+                    val = int(event.position().x() / self.width() * self.maximum())
+                    self.setValue(val)
+                    self.sliderMoved.emit(val)
+                super().mousePressEvent(event)
+
+        self._seekbar = ClickSlider(Qt.Orientation.Horizontal)
+        self._seekbar.setRange(0, 0)
+        self._seekbar.setEnabled(False)
+        self._seekbar.sliderMoved.connect(self._seek)
+        self._seekbar.setStyleSheet(f"""
+            QSlider::groove:horizontal {{
+                background: {COLORS['border']};
+                height: 6px;
+                border-radius: 3px;
+            }}
+            QSlider::handle:horizontal {{
+                background: {COLORS['fg']};
+                width: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }}
+            QSlider::sub-page:horizontal {{
+                background: {COLORS.get('accent', '#569cd6')};
+                border-radius: 3px;
+            }}
+        """)
+        layout.addWidget(self._seekbar)
+
+        # Time label
+        self._time_label = QLabel("0:00 / 0:00")
+        self._time_label.setStyleSheet(f"color: {COLORS['fg_dim']}; font: 9pt 'Consolas';")
+        self._time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._time_label)
+
+        # Buttons
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
+
+        self._start_btn = QPushButton("<<")
+        self._start_btn.setEnabled(False)
+        self._start_btn.setFixedWidth(40)
+        self._start_btn.clicked.connect(self._jump_start)
+        btn_layout.addWidget(self._start_btn)
 
         self._play_btn = QPushButton("Play")
         self._play_btn.setEnabled(False)
@@ -320,6 +393,12 @@ class AudioPlayerWidget(QWidget):
         self._stop_btn.clicked.connect(self._stop)
         btn_layout.addWidget(self._stop_btn)
 
+        self._end_btn = QPushButton(">>")
+        self._end_btn.setEnabled(False)
+        self._end_btn.setFixedWidth(40)
+        self._end_btn.clicked.connect(self._jump_end)
+        btn_layout.addWidget(self._end_btn)
+
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
         layout.addStretch()
@@ -327,15 +406,39 @@ class AudioPlayerWidget(QWidget):
         self._player = None
         self._audio_output = None
         self._temp_file = None
+        self._seeking = False
 
         try:
             from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
             self._player = QMediaPlayer()
             self._audio_output = QAudioOutput()
             self._player.setAudioOutput(self._audio_output)
+            self._player.positionChanged.connect(self._on_position_changed)
+            self._player.durationChanged.connect(self._on_duration_changed)
             self._has_media = True
         except ImportError:
             self._has_media = False
+
+    @staticmethod
+    def _fmt_time(ms: int) -> str:
+        s = ms // 1000
+        return f"{s // 60}:{s % 60:02d}"
+
+    def _on_position_changed(self, pos: int):
+        if not self._seeking:
+            self._seekbar.setValue(pos)
+        dur = self._player.duration() if self._player else 0
+        self._time_label.setText(f"{self._fmt_time(pos)} / {self._fmt_time(dur)}")
+
+    def _on_duration_changed(self, dur: int):
+        self._seekbar.setRange(0, dur)
+        self._time_label.setText(f"0:00 / {self._fmt_time(dur)}")
+
+    def _seek(self, pos: int):
+        if self._player:
+            self._seeking = True
+            self._player.setPosition(pos)
+            self._seeking = False
 
     def load_ogg(self, ogg_data: bytes, info_text: str = ""):
         self._stop()
@@ -361,12 +464,20 @@ class AudioPlayerWidget(QWidget):
         self._player.setSource(QUrl.fromLocalFile(path))
         self._play_btn.setEnabled(True)
         self._stop_btn.setEnabled(True)
+        self._start_btn.setEnabled(True)
+        self._end_btn.setEnabled(True)
+        self._seekbar.setEnabled(True)
 
     def clear_audio(self):
         self._stop()
         self._info_label.setText("No audio loaded")
         self._play_btn.setEnabled(False)
         self._stop_btn.setEnabled(False)
+        self._start_btn.setEnabled(False)
+        self._end_btn.setEnabled(False)
+        self._seekbar.setEnabled(False)
+        self._seekbar.setRange(0, 0)
+        self._time_label.setText("0:00 / 0:00")
 
     def _toggle_play(self):
         if not self._player:
@@ -383,6 +494,14 @@ class AudioPlayerWidget(QWidget):
         if self._player:
             self._player.stop()
         self._play_btn.setText("Play")
+
+    def _jump_start(self):
+        if self._player:
+            self._player.setPosition(0)
+
+    def _jump_end(self):
+        if self._player and self._player.duration() > 0:
+            self._player.setPosition(self._player.duration())
 
     def cleanup(self):
         self._stop()
@@ -808,14 +927,15 @@ class KHUxExplorer(QMainWindow):
         # Preview notebook
         self._preview_notebook = QTabWidget()
 
-        # Preview tab (images)
+        # Preview tab (images + audio stacked)
+        from PyQt6.QtWidgets import QStackedWidget
+        self._preview_stack = QStackedWidget()
         self._image_preview = ImagePreviewWidget()
         self._image_preview.zoom_changed.connect(self._on_zoom_changed)
-        self._preview_notebook.addTab(self._image_preview, "Preview")
-
-        # Audio tab
         self._audio_player = AudioPlayerWidget()
-        self._preview_notebook.addTab(self._audio_player, "Audio")
+        self._preview_stack.addWidget(self._image_preview)   # index 0
+        self._preview_stack.addWidget(self._audio_player)    # index 1
+        self._preview_notebook.addTab(self._preview_stack, "Preview")
 
         # Text tab (QTextEdit for HTML support / JSON highlighting)
         self._preview_text = QTextEdit()
@@ -877,6 +997,9 @@ class KHUxExplorer(QMainWindow):
         escape_shortcut = QShortcut(QKeySequence("Escape"), self)
         escape_shortcut.activated.connect(lambda: self._search_edit.clear())
 
+        quit_shortcut = QShortcut(QKeySequence("Ctrl+C"), self)
+        quit_shortcut.activated.connect(self.close)
+
     def _focus_search(self):
         self._search_edit.setFocus()
         self._search_edit.selectAll()
@@ -900,7 +1023,6 @@ class KHUxExplorer(QMainWindow):
             return
 
         self._status_left.setText(f"Loading {os.path.basename(path)}...")
-        QApplication.processEvents()
 
         # Check if it's a standalone file (not a BGAD container)
         with open(path, "rb") as f:
@@ -915,26 +1037,28 @@ class KHUxExplorer(QMainWindow):
             return
 
         if magic not in (b"BGAD",):
-            # Try as BGAD anyway — might be a renamed container
             pass
 
-        try:
-            container = KHUxBGADContainer(path)
-            entries = container.iter_entries()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to parse container:\n{e}")
-            self._status_left.setText("Ready")
-            return
+        self._loader = FileLoaderWorker(path)
+        self._loader.progress.connect(self._status_left.setText)
+        self._loader.error.connect(self._on_load_error)
+        self._loader.finished.connect(self._on_load_finished)
+        self._loader.start()
 
+    def _on_load_error(self, msg: str):
+        QMessageBox.critical(self, "Error", f"Failed to parse container:\n{msg}")
+        self._status_left.setText("Ready")
+        self._loader = None
+
+    def _on_load_finished(self, _container, entries: list, path: str):
+        self._loader = None
         self.current_file = path
         self.entries = entries
 
-        # Try to resolve mode 3 names via companion BGI
         self._resolve_names_via_bgi(path)
 
         self.entry_map = {e.name: e for e in entries}
 
-        # Detect formats
         self.entry_formats = {}
         for e in entries:
             if e.name.lower().endswith(".ttf"):
@@ -944,7 +1068,6 @@ class KHUxExplorer(QMainWindow):
             else:
                 self.entry_formats[e.name] = "unknown"
 
-        # Update recent files
         norm_path = os.path.normpath(path)
         if norm_path in self.recent_files:
             self.recent_files.remove(norm_path)
@@ -953,19 +1076,15 @@ class KHUxExplorer(QMainWindow):
         self._save_recent_files()
         self._rebuild_recent_menu()
 
-        # Update file label
         fname = os.path.basename(path)
         self._file_label.setText(fname)
         self._file_label.setStyleSheet(f"color: {COLORS['fg_bright']};")
 
-        # Build tree
         self._populate_tree()
 
-        # Update status
         self._status_left.setText(f"Loaded {fname}")
         self._status_right.setText(f"{len(entries)} entries")
 
-        # Show container-level properties
         self._show_container_properties()
 
     def _populate_tree(self, filter_text: str = ""):
@@ -1465,25 +1584,29 @@ class KHUxExplorer(QMainWindow):
         self._zoom_label.setText("100%")
 
         self._audio_player.clear_audio()
+        self._preview_stack.setCurrentIndex(0)  # Default to image view
 
         if fmt == "btf" and HAS_BTF and HAS_PIL:
             self._show_btf_preview(entry)
+            self._preview_stack.setCurrentIndex(0)  # Image
             self._preview_notebook.setCurrentIndex(0)  # Preview tab
             self._zoom_in_btn.setEnabled(True)
             self._zoom_out_btn.setEnabled(True)
         elif fmt == "ttf" and HAS_PIL:
             self._show_ttf_preview(entry)
+            self._preview_stack.setCurrentIndex(0)  # Image
             self._preview_notebook.setCurrentIndex(0)  # Preview tab
             self._zoom_in_btn.setEnabled(True)
             self._zoom_out_btn.setEnabled(True)
         elif fmt == "akb":
             self._show_akb_audio(entry)
-            self._preview_notebook.setCurrentIndex(1)  # Audio tab
+            self._preview_stack.setCurrentIndex(1)  # Audio
+            self._preview_notebook.setCurrentIndex(0)  # Preview tab
             self._zoom_in_btn.setEnabled(False)
             self._zoom_out_btn.setEnabled(False)
         elif fmt in ("plist", "json") or self._is_text_data(entry.data):
             self._show_text_preview(entry)
-            self._preview_notebook.setCurrentIndex(2)  # Text tab
+            self._preview_notebook.setCurrentIndex(1)  # Text tab
             self._zoom_in_btn.setEnabled(False)
             self._zoom_out_btn.setEnabled(False)
         elif HAS_MASTER_DATA and self._is_master_data_container() and entry.name.isdigit() and len(entry.data) >= 8:
@@ -1492,7 +1615,7 @@ class KHUxExplorer(QMainWindow):
             self._zoom_out_btn.setEnabled(False)
         else:
             self._show_hex_preview(entry)
-            self._preview_notebook.setCurrentIndex(3)  # Hex dump tab
+            self._preview_notebook.setCurrentIndex(2)  # Hex dump tab
             self._zoom_in_btn.setEnabled(False)
             self._zoom_out_btn.setEnabled(False)
 
@@ -1717,7 +1840,7 @@ class KHUxExplorer(QMainWindow):
         except Exception as e:
             self._audio_player.clear_audio()
             self._preview_text.setPlainText(f"AKB parse error: {e}")
-            self._preview_notebook.setCurrentIndex(2)
+            self._preview_notebook.setCurrentIndex(1)
 
     def _show_hex_preview(self, entry: BGADEntry):
         self._preview_hex.setPlainText(_hex_dump(entry.data, length=4096))
@@ -1745,16 +1868,16 @@ class KHUxExplorer(QMainWindow):
                         self._preview_text.setPlainText(text)
                 else:
                     self._preview_text.setPlainText(text)
-                self._preview_notebook.setCurrentIndex(2)  # Text tab
+                self._preview_notebook.setCurrentIndex(1)  # Text tab
             except UnicodeDecodeError:
                 self._preview_hex.setPlainText(
                     f"Decrypted master data (seed=0x{seed:08x}, size={psize}):\n\n"
                     + _hex_dump(decrypted, length=4096)
                 )
-                self._preview_notebook.setCurrentIndex(3)  # Hex dump tab
+                self._preview_notebook.setCurrentIndex(2)  # Hex dump tab
         except Exception:
             self._show_hex_preview(entry)
-            self._preview_notebook.setCurrentIndex(3)
+            self._preview_notebook.setCurrentIndex(2)
 
     def _is_text_data(self, data: bytes) -> bool:
         if len(data) == 0:
@@ -2037,9 +2160,12 @@ class KHUxExplorer(QMainWindow):
 
 
 def main():
+    import signal
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
     app = QApplication(sys.argv)
     app.setStyleSheet(DARK_STYLESHEET)
-    app.setStyle("Fusion")  # Consistent cross-platform base style
+    app.setStyle("Fusion")
 
     window = KHUxExplorer()
     window.show()
