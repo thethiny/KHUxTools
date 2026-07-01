@@ -1060,11 +1060,31 @@ class KHUxExplorer(QMainWindow):
         self.entry_map = {e.name: e for e in entries}
 
         self.entry_formats = {}
-        for e in entries:
+        self.entry_link_targets: Dict[str, int] = {}
+        entry_list = list(entries)
+        for e in entry_list:
             if e.name.lower().endswith(".ttf"):
                 self.entry_formats[e.name] = "ttf"
             elif e.data and len(e.data) >= 4:
-                self.entry_formats[e.name] = detect_format(e.data[:4])
+                fmt = detect_format(e.data[:4])
+                if fmt == "index" and len(e.data) == 4:
+                    import struct as _struct
+                    target_idx = _struct.unpack("<I", e.data[:4])[0]
+                    hops = 0
+                    while (target_idx < len(entry_list)
+                           and len(entry_list[target_idx].data) == 4
+                           and hops < 20):
+                        target_idx = _struct.unpack("<I", entry_list[target_idx].data[:4])[0]
+                        hops += 1
+                    if target_idx < len(entry_list) and len(entry_list[target_idx].data) > 4:
+                        target_data = entry_list[target_idx].data
+                        real_fmt = detect_format(target_data[:4])
+                        self.entry_formats[e.name] = f"link:{real_fmt}"
+                        self.entry_link_targets[e.name] = target_idx
+                    else:
+                        self.entry_formats[e.name] = "index"
+                else:
+                    self.entry_formats[e.name] = fmt
             else:
                 self.entry_formats[e.name] = "unknown"
 
@@ -1109,7 +1129,13 @@ class KHUxExplorer(QMainWindow):
             if not parts:
                 parts = [entry.name or "/"]
             fmt = self.entry_formats.get(entry.name, "unknown")
-            badge = FORMAT_BADGES.get(fmt, "")
+            if fmt.startswith("link:"):
+                real_fmt = fmt[5:]
+                real_badge = FORMAT_BADGES.get(real_fmt, real_fmt.upper())
+                badge = f"[LINK | {real_badge.strip('[]')}]"
+                fmt = real_fmt
+            else:
+                badge = FORMAT_BADGES.get(fmt, "")
 
             # Build folder hierarchy
             parent: Optional[QTreeWidgetItem] = None
@@ -1229,9 +1255,18 @@ class KHUxExplorer(QMainWindow):
         self.current_entry = entry
         self._export_btn.setEnabled(True)
 
+        # For link entries, show properties of the stub but preview the target
+        fmt = self.entry_formats.get(entry_name, "")
+        preview_entry = entry
+        if fmt.startswith("link:") and entry_name in self.entry_link_targets:
+            target_idx = self.entry_link_targets[entry_name]
+            entry_list = list(self.entries) if not isinstance(self.entries, list) else self.entries
+            if target_idx < len(entry_list):
+                preview_entry = entry_list[target_idx]
+
         self._show_entry_properties(entry)
         self._show_hex_view(entry)
-        self._show_preview(entry)
+        self._show_preview(preview_entry)
 
     def _on_tree_right_click(self, pos):
         item = self.tree.itemAt(pos)
@@ -1319,7 +1354,23 @@ class KHUxExplorer(QMainWindow):
         self._props_text.append_separator()
 
         self._props_text.append_kv("Name", entry.name)
-        self._props_text.append_kv("Format", fmt.upper())
+        display_fmt = fmt
+        if fmt.startswith("link:"):
+            real_fmt = fmt[5:]
+            display_fmt = f"LINK -> {real_fmt.upper()}"
+            if entry.name in self.entry_link_targets:
+                target_idx = self.entry_link_targets[entry.name]
+                import struct as _struct
+                stub_val = _struct.unpack("<I", entry.data[:4])[0]
+                entry_list = list(self.entries) if not isinstance(self.entries, list) else self.entries
+                target_name = entry_list[target_idx].name if target_idx < len(entry_list) else "?"
+                self._props_text.append_kv("Format", display_fmt)
+                self._props_text.append_kv("Stub Value", str(stub_val))
+                self._props_text.append_kv("Resolves To", f"[{target_idx}] {target_name}")
+            else:
+                self._props_text.append_kv("Format", display_fmt)
+        else:
+            self._props_text.append_kv("Format", fmt.upper())
         self._props_text.append_kv("Data Size", _format_size(len(entry.data)))
         self._props_text.append_kv("Offset", f"0x{entry.offset:08x}")
 

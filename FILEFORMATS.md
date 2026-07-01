@@ -138,6 +138,35 @@ For each name index `i`:
 - `name_offsets[i]` is the byte offset into the string blob for the name string
 - Names are null-terminated UTF-8
 
+#### Stub Deduplication
+
+The BGAD build tool deduplicates identical assets using 4-byte stub entries.
+When multiple filenames reference the same texture/data, the tool stores the
+real data once and replaces all duplicates with a 4-byte entry containing the
+sequential BGAD entry index (u32 LE) of the target. Chains can be multi-hop:
+stub → stub → ... → real data.
+
+The companion BGI resolves these chains at build time: each filename maps
+directly to the **final** real entry's index/offset, bypassing all intermediate
+stubs. The game engine never reads stub entries — the BGI routes around them.
+
+When reconstructing a BGI from a BGAD container (e.g., when the original BGI
+is lost), the builder must follow these chains:
+
+```
+for each entry:
+    if data_size == 4:
+        target_idx = u32_le(data)
+        while entries[target_idx].data_size == 4:  # follow chain
+            target_idx = u32_le(entries[target_idx].data)
+        map filename → entries[target_idx].offset   # final real entry
+    else:
+        map filename → entry.offset                  # already real
+```
+
+Stub values > 0x80000000 (bit 31 set) may indicate cross-volume references
+or special markers; their purpose is not fully understood.
+
 #### Hash Table (runtime)
 
 At runtime, the game builds an XXH32-based hash table for O(1) name lookups.
@@ -600,7 +629,7 @@ From a 161,651-entry container (mp4/misc.mp4):
 
 | Format  | Count  | Percentage | Description              |
 |---------|--------|------------|--------------------------|
-| index   | 88,952 | 55.0%      | 4-byte u32 references    |
+| index   | 88,952 | 55.0%      | 4-byte stub (u32 entry index → real data via chain) |
 | btf     | 63,152 | 39.1%      | Images                   |
 | lwf     | 5,474  | 3.4%       | Animations               |
 | map     | 1,192  | 0.7%       | Map data                 |
