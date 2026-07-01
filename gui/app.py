@@ -1062,6 +1062,8 @@ class KHUxExplorer(QMainWindow):
         self.entry_formats = {}
         self.entry_link_targets: Dict[str, int] = {}
         entry_list = list(entries)
+        # Build real-only table (non-stub entries) for stub resolution
+        real_table = [i for i, e in enumerate(entry_list) if len(e.data) != 4]
         for e in entry_list:
             if e.name.lower().endswith(".ttf"):
                 self.entry_formats[e.name] = "ttf"
@@ -1069,14 +1071,9 @@ class KHUxExplorer(QMainWindow):
                 fmt = detect_format(e.data[:4])
                 if fmt == "index" and len(e.data) == 4:
                     import struct as _struct
-                    target_idx = _struct.unpack("<I", e.data[:4])[0]
-                    hops = 0
-                    while (target_idx < len(entry_list)
-                           and len(entry_list[target_idx].data) == 4
-                           and hops < 20):
-                        target_idx = _struct.unpack("<I", entry_list[target_idx].data[:4])[0]
-                        hops += 1
-                    if target_idx < len(entry_list) and len(entry_list[target_idx].data) > 4:
+                    stub_val = _struct.unpack("<I", e.data[:4])[0]
+                    if stub_val < len(real_table):
+                        target_idx = real_table[stub_val]
                         target_data = entry_list[target_idx].data
                         real_fmt = detect_format(target_data[:4])
                         self.entry_formats[e.name] = f"link:{real_fmt}"

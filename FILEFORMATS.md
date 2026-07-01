@@ -151,21 +151,36 @@ directly to the **final** real entry's index/offset, bypassing all intermediate
 stubs. The game engine never reads stub entries — the BGI routes around them.
 
 When reconstructing a BGI from a BGAD container (e.g., when the original BGI
-is lost), the builder must follow these chains:
+is lost), the builder must resolve stubs using a **real-only entry table**:
 
 ```
+# Build the real-only entry table (entries with actual data, not stubs)
+real_entries = []
+for entry in all_bgad_entries:
+    if entry.data_size != 4:
+        real_entries.append(entry)
+
+# Resolve each filename
 for each entry:
     if data_size == 4:
-        target_idx = u32_le(data)
-        while entries[target_idx].data_size == 4:  # follow chain
-            target_idx = u32_le(entries[target_idx].data)
-        map filename → entries[target_idx].offset   # final real entry
+        real_idx = u32_le(data)
+        map filename → real_entries[real_idx].offset   # index into real-only table
     else:
-        map filename → entry.offset                  # already real
+        map filename → entry.offset                     # already real
 ```
+
+**Key insight**: Stub values are indices into the real-only entry table (i.e.,
+the table of entries whose data_size != 4), NOT sequential BGAD entry indices.
+The earlier assumption that stubs index into the full BGAD entry list was wrong
+and caused some filenames to resolve to incorrect targets (e.g., `But01A2.png`
+resolving to an unrelated audio file instead of `But01A.png`).
 
 Stub values > 0x80000000 (bit 31 set) may indicate cross-volume references
 or special markers; their purpose is not fully understood.
+
+**Status**: WORKING. The real-only entry table indexing algorithm correctly
+resolves all observed stubs (74,294 stubs resolved in a 161K-entry container).
+Textures load correctly and scenes render without Frida workarounds.
 
 #### Hash Table (runtime)
 
