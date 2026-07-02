@@ -4,8 +4,17 @@
 #
 # Requires: frida 16.1.4, adb, frida-server-16-64 with -D on device
 
-PHONE="192.168.1.181:5555"
-SCRIPT="D:/Modding/Git/KHUx/tools/frida_timeline.js"
+# Load env
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/../.env"
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    source "$ENV_FILE"
+    set +a
+fi
+
+PHONE="${KHUX_PHONE:?KHUX_PHONE not set in .env}"
+SCRIPT="$SCRIPT_DIR/frida_timeline.js"
 PKG="com.square_enix.android_googleplay.khuxww"
 FRIDA_LOG=$(mktemp)
 HANDLED=""
