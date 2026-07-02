@@ -30,26 +30,48 @@ def scan_bgad_entries(mp4_path):
     return entries
 
 
+def _is_stub(name, size, data):
+    """A 4-byte entry is a stub UNLESS it's a .txt with valid printable ASCII."""
+    if size != 4:
+        return False
+    if os.path.splitext(name)[1].lower() == ".txt":
+        try:
+            text = data.decode("utf-8")
+            if all(32 <= ord(c) < 127 or c in "\n\r\t" for c in text):
+                return False
+        except (UnicodeDecodeError, ValueError):
+            pass
+    return True
+
+
 def resolve_stub_chains(entries):
     """Follow 4-byte stub chains to find the real entry offset for each name.
 
     Stub values index into a table of REAL (non-stub) entries only — not the
     full sequential BGAD order. Build the real-entry table first, then resolve.
+
+    4-byte .txt entries with valid ASCII content are treated as real data,
+    not stubs — short strings like "Name", "Home", "SKIP" are legitimate.
+
     Returns [(name, resolved_offset), ...] with stubs resolved to their final target.
     """
-    # Build table of real (non-stub) entries in sequential order
-    real_table = []  # [(name, offset, size, data), ...]
+    real_table = []
+    txt_kept = 0
     for e in entries:
-        if e[2] != 4:  # size != 4 → real entry
+        if not _is_stub(e[0], e[2], e[3]):
             real_table.append(e)
+            if e[2] == 4:
+                txt_kept += 1
 
-    print(f"  real entries: {len(real_table)}, stubs: {len(entries) - len(real_table)}")
+    stub_count_total = len(entries) - len(real_table)
+    print(f"  real entries: {len(real_table)} ({txt_kept} are 4-byte .txt with ASCII content)")
+    print(f"  stubs: {stub_count_total}")
 
     resolved = []
     stub_count = 0
 
     for i, (name, offset, size, data) in enumerate(entries):
-        if size == 4:
+        if _is_stub(name, size, data):
             target_idx = struct.unpack("<I", data[:4])[0]
             if target_idx < len(real_table):
                 resolved.append((name, real_table[target_idx][1]))

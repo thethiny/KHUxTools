@@ -1062,14 +1062,26 @@ class KHUxExplorer(QMainWindow):
         self.entry_formats = {}
         self.entry_link_targets: Dict[str, int] = {}
         entry_list = list(entries)
-        # Build real-only table (non-stub entries) for stub resolution
-        real_table = [i for i, e in enumerate(entry_list) if len(e.data) != 4]
+        # Build real-only table: non-stub entries.
+        # 4-byte .txt with printable ASCII are real data, not stubs.
+        def _is_stub(e):
+            if len(e.data) != 4:
+                return False
+            if e.name.lower().endswith(".txt"):
+                try:
+                    text = e.data.decode("utf-8")
+                    if all(32 <= ord(c) < 127 or c in "\n\r\t" for c in text):
+                        return False
+                except (UnicodeDecodeError, ValueError):
+                    pass
+            return True
+        real_table = [i for i, e in enumerate(entry_list) if not _is_stub(e)]
         for e in entry_list:
             if e.name.lower().endswith(".ttf"):
                 self.entry_formats[e.name] = "ttf"
             elif e.data and len(e.data) >= 4:
                 fmt = detect_format(e.data[:4])
-                if fmt == "index" and len(e.data) == 4:
+                if fmt == "index" and _is_stub(e):
                     import struct as _struct
                     stub_val = _struct.unpack("<I", e.data[:4])[0]
                     if stub_val < len(real_table):
