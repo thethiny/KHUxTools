@@ -67,6 +67,13 @@ try:
 except ImportError:
     HAS_MASTER_DATA = False
 
+try:
+    from khux.formats.master import MasterDataParser
+    _master_parser = MasterDataParser()
+    HAS_MASTER_PARSER = True
+except ImportError:
+    HAS_MASTER_PARSER = False
+
 
 # ---------------------------------------------------------------------------
 # Dark theme colors
@@ -1583,32 +1590,45 @@ class KHUxExplorer(QMainWindow):
             except Exception:
                 pass  # Fall through to generic master data
 
-        # Generic master data decryption
+        # Generic master data decryption — try schema-based parser first
         try:
             import struct as _struct
             seed, psize, decrypted = decrypt_master_data_payload(entry.data)
 
             table_type = self._get_master_table_type()
-            self._props_text.append_header(f"\nDecrypted: {table_type}")
+            detected = None
+            if HAS_MASTER_PARSER and self.current_file:
+                detected = _master_parser.detect_table(self.current_file)
+            display_type = detected or table_type or "unknown"
+            has_schema = HAS_MASTER_PARSER and display_type in _master_parser.schemas
+
+            self._props_text.append_header(f"\nDecrypted: {display_type}" + (" [schema]" if has_schema else ""))
             self._props_text.append_separator()
 
-            if len(decrypted) >= 4:
-                rec_id = _struct.unpack_from("<i", decrypted, 0)[0]
-                self._props_text.append_kv("Record ID", str(rec_id))
+            if has_schema:
+                record = _master_parser.parse_entry_bytes(entry.data, display_type)
+                for k, v in record.items():
+                    if k.startswith("_"):
+                        continue
+                    self._props_text.append_kv(k, str(v))
+            else:
+                if len(decrypted) >= 4:
+                    rec_id = _struct.unpack_from("<i", decrypted, 0)[0]
+                    self._props_text.append_kv("Record ID", str(rec_id))
 
-            if len(decrypted) >= 8:
-                raw_name = decrypted[4:min(134, len(decrypted))]
-                null = raw_name.find(0)
-                if null >= 0:
-                    raw_name = raw_name[:null]
-                try:
-                    name_str = raw_name.decode("utf-8")
-                    if name_str and all(c.isprintable() or c == ' ' for c in name_str):
-                        self._props_text.append_kv("Name", name_str)
-                except (UnicodeDecodeError, ValueError):
-                    pass
+                if len(decrypted) >= 8:
+                    raw_name = decrypted[4:min(134, len(decrypted))]
+                    null = raw_name.find(0)
+                    if null >= 0:
+                        raw_name = raw_name[:null]
+                    try:
+                        name_str = raw_name.decode("utf-8")
+                        if name_str and all(c.isprintable() or c == ' ' for c in name_str):
+                            self._props_text.append_kv("Name", name_str)
+                    except (UnicodeDecodeError, ValueError):
+                        pass
 
-            self._props_text.append_kv("Table Type", table_type)
+            self._props_text.append_kv("Table", display_type)
             self._props_text.append_kv("Seed", f"0x{seed:08x}")
             self._props_text.append_kv("Payload Size", _format_size(psize))
 
@@ -1906,10 +1926,28 @@ class KHUxExplorer(QMainWindow):
         self._preview_hex.setPlainText(_hex_dump(entry.data, length=4096))
 
     def _show_master_data_preview(self, entry: BGADEntry):
-        """Decrypt master data and show decrypted content in text or hex preview."""
+        """Decrypt master data and show as JSON (if schema exists) or hex dump."""
         try:
             seed, psize, decrypted = decrypt_master_data_payload(entry.data)
-            # Try to show as text (possibly JSON)
+
+            # Try struct→JSON via MasterDataParser
+            if HAS_MASTER_PARSER:
+                table_name = self._get_master_table_type()
+                if not table_name and self.current_file:
+                    table_name = _master_parser.detect_table(self.current_file)
+                record = _master_parser.parse_entry_bytes(entry.data, table_name or "")
+                if "_raw_hex" not in record:
+                    pretty = json.dumps(record, indent=2, ensure_ascii=False)
+                    html = self._json_to_html(pretty)
+                    self._preview_text.setHtml(
+                        f'<pre style="font-family:Consolas;font-size:10pt;color:{COLORS["fg"]};'
+                        f'background-color:{COLORS["text_bg"]};margin:0;white-space:pre-wrap;">'
+                        f'{html}</pre>'
+                    )
+                    self._preview_notebook.setCurrentIndex(1)
+                    return
+
+            # Fallback: try UTF-8 text / JSON
             try:
                 text = decrypted.decode("utf-8")
                 stripped = text.lstrip()
@@ -1928,13 +1966,13 @@ class KHUxExplorer(QMainWindow):
                         self._preview_text.setPlainText(text)
                 else:
                     self._preview_text.setPlainText(text)
-                self._preview_notebook.setCurrentIndex(1)  # Text tab
+                self._preview_notebook.setCurrentIndex(1)
             except UnicodeDecodeError:
                 self._preview_hex.setPlainText(
                     f"Decrypted master data (seed=0x{seed:08x}, size={psize}):\n\n"
                     + _hex_dump(decrypted, length=4096)
                 )
-                self._preview_notebook.setCurrentIndex(2)  # Hex dump tab
+                self._preview_notebook.setCurrentIndex(2)
         except Exception:
             self._show_hex_preview(entry)
             self._preview_notebook.setCurrentIndex(2)

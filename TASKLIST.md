@@ -140,6 +140,12 @@
 
 ---
 
+## Tooling
+
+- [ ] **Speed-first optimized BGI/BGAD builder** — Fast, purpose-built toolkit for creating and packing game data files. Should support: building BGI indices from file lists, packing BGAD containers with correct encryption modes, batch operations for full game data rebuilds. Priority: performance over flexibility.
+
+---
+
 ## Other Formats
 
 - [ ] **Cut files** — Split archive format (like .001/.002 zip parts). Mentioned by user, location unknown in current Input/
