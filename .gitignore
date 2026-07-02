@@ -1,9 +1,40 @@
-Input
-extracted_files
-.pytest_cache
-__pycache__
+# Decompiled/extracted data (large, not source)
+Input/
+extracted_files/
+
+# Python
+__pycache__/
 *.pyc
-test*.py
-!test_*.py
+.pytest_cache/
 .cache/
+
+# Server (separate git repo)
 server/
+
+# IDE
+.vscode/
+
+# Environment (real secrets/paths)
+.env
+
+# Database
+*.db
+
+# Screenshots & traces (debug artifacts)
+screen*.png
+strace.txt
+
+# Claude sessions (local notes)
+claude_sessions/
+
+# Validate data (large binary misc files)
+validate_data/
+
+# Frida/GDB debug scripts (ephemeral)
+tools/frida_*
+tools/gdb_*
+
+# Misc generated files
+FEASIBILITY.md
+FINDINGS.md
+re_serve.cmd
