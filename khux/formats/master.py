@@ -218,21 +218,27 @@ class MasterDataParser:
         return None
 
     def detect_table(self, path: str) -> Optional[str]:
-        """Auto-detect table name by probing entry struct size.
+        """Auto-detect table name from the BGAD container's embedded name entry.
 
-        Local m*.jpg files may not follow the server index order.
-        This checks the first entry's decrypted size against known schemas.
+        Each m*.jpg stores the table name as a non-numeric, non-special entry
+        (e.g. "avatarParts", "initItem"). Falls back to struct size heuristic
+        if no name entry is found.
         """
         from ..containers.bgad import KHUxBGADContainer
         container = KHUxBGADContainer(path)
         result = None
+        fallback_size = None
+        _special = ("/", "md5", "size", "hash", "revision")
         for entry in container.iter_entries():
-            if entry.name.isdigit() and len(entry.data) >= 8:
-                _, _, dec = decrypt_master_data_payload(entry.data)
-                size = len(dec)
-                result = _STRUCT_SIZE_TO_TABLE.get(size)
+            if entry.name not in _special and not entry.name.isdigit():
+                result = entry.name
                 break
+            if fallback_size is None and entry.name.isdigit() and len(entry.data) >= 8:
+                _, _, dec = decrypt_master_data_payload(entry.data)
+                fallback_size = len(dec)
         container.close()
+        if not result and fallback_size is not None:
+            result = _STRUCT_SIZE_TO_TABLE.get(fallback_size)
         return result
 
     def parse_entry_bytes(self, data: bytes, table_name: str) -> Dict[str, Any]:

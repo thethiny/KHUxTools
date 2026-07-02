@@ -1666,6 +1666,9 @@ class KHUxExplorer(QMainWindow):
         self._audio_player.clear_audio()
         self._preview_stack.setCurrentIndex(0)  # Default to image view
 
+        # Always populate hex dump tab so it's available for any entry
+        self._show_hex_preview(entry)
+
         if fmt == "btf" and HAS_BTF and HAS_PIL:
             self._show_btf_preview(entry)
             self._preview_stack.setCurrentIndex(0)  # Image
@@ -1694,7 +1697,6 @@ class KHUxExplorer(QMainWindow):
             self._zoom_in_btn.setEnabled(False)
             self._zoom_out_btn.setEnabled(False)
         else:
-            self._show_hex_preview(entry)
             self._preview_notebook.setCurrentIndex(2)  # Hex dump tab
             self._zoom_in_btn.setEnabled(False)
             self._zoom_out_btn.setEnabled(False)
@@ -1929,6 +1931,12 @@ class KHUxExplorer(QMainWindow):
         """Decrypt master data and show as JSON (if schema exists) or hex dump."""
         try:
             seed, psize, decrypted = decrypt_master_data_payload(entry.data)
+
+            # Always update hex tab with decrypted bytes
+            self._preview_hex.setPlainText(
+                f"Decrypted (seed=0x{seed:08x}, size={psize}):\n\n"
+                + _hex_dump(decrypted, length=4096)
+            )
 
             # Try struct→JSON via MasterDataParser
             if HAS_MASTER_PARSER:
