@@ -154,39 +154,43 @@ def build_bgi_payload(entries):
     return buf.getvalue()
 
 
-def wrap_in_bgad(bgi_data):
-    """Wrap BGI data in a BGAD entry with name '/', mode 2 LCG encryption + zlib."""
+def _make_bgad_entry(name_str, data, compress=True):
+    """Create a single BGAD entry with mode 2 LCG encryption."""
     import zlib
-
-    name_raw = b"/"
-    name_length = len(name_raw)  # 1
-    decomp_size = len(bgi_data)
-
-    # Compress with zlib
-    compressed = zlib.compress(bgi_data)
-    data_size = len(compressed)
-
-    # Encrypt name with mode 2 LCG, seed = data_size
     from khux.utils.crypto import khux_encrypt
+
+    name_raw = name_str.encode("utf-8")
+    name_length = len(name_raw)
+
+    if compress:
+        payload = zlib.compress(data)
+        comp_mode = 2
+        decomp_size = len(data)
+    else:
+        payload = data
+        comp_mode = 0
+        decomp_size = len(data)
+
+    data_size = len(payload)
     name_encrypted = khux_encrypt(name_raw, seed=data_size, mode=2)
+    data_encrypted = khux_encrypt(payload, seed=name_length, mode=2)
 
-    # Encrypt data with mode 2 LCG, seed = name_length
-    data_encrypted = khux_encrypt(compressed, seed=name_length, mode=2)
-
-    # BGAD header: <4sHHHHHHII
     header = struct.pack("<4sHHHHHHII",
-        b"BGAD",      # magic
-        2,            # version
-        0,            # flags
-        24,           # header_size
-        name_length,  # name_length (also LCG seed for data decryption)
-        2,            # encryption_mode
-        2,            # compression_mode (zlib)
-        data_size,    # data_size (also LCG seed for name decryption)
-        decomp_size,  # decompressed_size
+        b"BGAD", 2, 0, 24,
+        name_length, 2, comp_mode,
+        data_size, decomp_size,
     )
-
     return header + name_encrypted + data_encrypted
+
+
+def wrap_in_bgad(bgi_data, mp4_md5=None, mp4_size=None):
+    """Wrap BGI data in BGAD entries: '/' + optional 'md5' + 'size' metadata."""
+    result = _make_bgad_entry("/", bgi_data, compress=True)
+    if mp4_md5:
+        result += _make_bgad_entry("md5", mp4_md5.encode("ascii"), compress=False)
+    if mp4_size is not None:
+        result += _make_bgad_entry("size", str(mp4_size).encode("ascii"), compress=False)
+    return result
 
 
 ALIASES = {
@@ -228,8 +232,18 @@ def main():
     bgi_data = bgi_header + bgi_payload
     print(f"  BGI total size: {len(bgi_data)} bytes (unencrypted, will compress in BGAD)")
 
+    import hashlib
+    print(f"Computing MP4 MD5...")
+    h = hashlib.md5()
+    with open(mp4_path, "rb") as f:
+        while chunk := f.read(1 << 20):
+            h.update(chunk)
+    mp4_md5 = h.hexdigest()
+    mp4_size = os.path.getsize(mp4_path)
+    print(f"  MP4 md5={mp4_md5}, size={mp4_size}")
+
     print("Wrapping in BGAD (mode 2 LCG + zlib)...")
-    bgad_data = wrap_in_bgad(bgi_data)
+    bgad_data = wrap_in_bgad(bgi_data, mp4_md5=mp4_md5, mp4_size=mp4_size)
     print(f"  BGAD size: {len(bgad_data)} bytes")
 
     with open(out_path, "wb") as f:
