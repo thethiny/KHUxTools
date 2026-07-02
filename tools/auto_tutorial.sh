@@ -1,90 +1,159 @@
 #!/bin/bash
-# Automated KHUx tutorial tap-through using Frida events as triggers
+# Automated KHUx tutorial — event-driven via Frida hooks
 # Usage: bash tools/auto_tutorial.sh
 #
-# Requires: frida, adb
-# Frida server: frida-server-16-64 with -D flag running on device
+# Requires: frida 16.1.4, adb, frida-server-16-64 with -D on device
 
 PHONE="192.168.1.181:5555"
-TAP="adb -s $PHONE shell input tap"
 SCRIPT="D:/Modding/Git/KHUx/tools/frida_timeline.js"
 PKG="com.square_enix.android_googleplay.khuxww"
-FRIDA_LOG=""
+FRIDA_LOG=$(mktemp)
+HANDLED=""
 
-wait_for() {
-    # Wait for a pattern to appear in the frida log
-    local pattern="$1"
-    local label="$2"
-    echo "  ... waiting for: $label"
-    until grep -q "$pattern" "$FRIDA_LOG" 2>/dev/null; do
-        sleep 0.5
-    done
-    echo "  >>> $label detected!"
+tap() {
+    adb -s $PHONE shell input tap "$1" "$2"
 }
 
-wait_for_new() {
-    # Wait for a pattern that appears AFTER the current line count
-    local pattern="$1"
-    local label="$2"
-    local baseline=$(wc -l < "$FRIDA_LOG" 2>/dev/null || echo 0)
-    echo "  ... waiting for: $label (after line $baseline)"
-    while true; do
-        tail -n +$((baseline + 1)) "$FRIDA_LOG" 2>/dev/null | grep -q "$pattern" && break
-        sleep 0.5
-    done
-    echo "  >>> $label detected!"
+type_text() {
+    adb -s $PHONE shell input tap 897 520   # focus name field
+    sleep 1
+    adb -s $PHONE shell input text "$1"
+    sleep 1
+    adb -s $PHONE shell input keyevent 66   # Enter
 }
 
-tap_until() {
-    # Tap at coordinates every 1s until a Frida event appears
-    local x=$1 y=$2 pattern="$3" label="$4"
-    local baseline=$(wc -l < "$FRIDA_LOG" 2>/dev/null || echo 0)
-    echo "  ... tapping ($x,$y) until: $label"
-    while true; do
-        tail -n +$((baseline + 1)) "$FRIDA_LOG" 2>/dev/null | grep -q "$pattern" && break
-        $TAP $x $y
-        sleep 1
-    done
-    echo "  >>> $label detected!"
+already_handled() {
+    echo "$HANDLED" | grep -q "$1" && return 0
+    HANDLED="$HANDLED $1"
+    return 1
 }
 
 echo "=== KHUx Auto Tutorial ==="
 
-# Step 0: Kill game
+# Kill game
 echo "[0] Killing game..."
 adb -s $PHONE shell "am force-stop $PKG"
 sleep 1
 
-# Step 1: Spawn with Frida
+# Spawn with Frida
 echo "[1] Spawning with Frida..."
-FRIDA_LOG=$(mktemp)
-frida -U -f $PKG -l "$SCRIPT" --eternalize > "$FRIDA_LOG" 2>&1 &
+frida -U -f $PKG -l "$SCRIPT" > "$FRIDA_LOG" 2>&1 &
 FRIDA_PID=$!
 
-# Step 2: Wait for hooks
-wait_for "hooks installed" "Frida hooks"
+# Wait for hooks
+echo "  ... waiting for hooks"
+until grep -q "hooks installed" "$FRIDA_LOG" 2>/dev/null; do sleep 1; done
+echo "  >>> hooks ready"
 
-# Step 3: Tap until title screen
-echo "[2] Tapping to title screen..."
-tap_until 897 540 "SceneTitle::init" "SceneTitle"
+# Event loop — poll file instead of tail pipe (Windows compatibility)
+echo "[2] Event loop started"
+LAST_LINE=0
+while true; do
+    TOTAL=$(wc -l < "$FRIDA_LOG" 2>/dev/null || echo 0)
+    if [ "$TOTAL" -gt "$LAST_LINE" ]; then
+        tail -n +$((LAST_LINE + 1)) "$FRIDA_LOG" | head -n $((TOTAL - LAST_LINE)) | while read -r line; do
 
-# Step 4: Tap until EULA
-echo "[3] Tapping to EULA..."
-tap_until 897 540 "SceneAgreement::init" "SceneAgreement"
+            if echo "$line" | grep -q "SceneMovie::init"; then
+                already_handled "movie1" && continue
+                echo "[TAP] Intro movie — SKIP"
+                tap 100 50
+            fi
+
+            if echo "$line" | grep -q "SceneTitle::init"; then
+                already_handled "title" && continue
+                echo "[TAP] Title — skip transition + start"
+                sleep 1
+                tap 897 540
+                sleep 1
+                tap 897 540
+            fi
+
+            if echo "$line" | grep -q "SceneAgreement::init"; then
+                already_handled "eula" && continue
+                echo "[TAP] EULA — Accept"
+                sleep 2
+                tap 1350 950
+            fi
+
+            if echo "$line" | grep -q "openBirthRegisterPopup"; then
+                already_handled "birth" && continue
+                echo "[TAP] Birthday — Register + Confirm"
+                sleep 1
+                tap 897 648
+                sleep 2
+                tap 1120 648
+            fi
+
+            if echo "$line" | grep -q "SceneTutorialDownload::init"; then
+                already_handled "download" && continue
+                echo "[TAP] Download — tap download button"
+                sleep 1
+                tap 897 864
+            fi
+
+            if echo "$line" | grep -q "openJewelPopup"; then
+                already_handled "jewel" && continue
+                echo "[TAP] Jewels — Collect"
+                sleep 1
+                tap 897 864
+            fi
+
+            if echo "$line" | grep -q "openNameRegisterPopup"; then
+                already_handled "name" && continue
+                echo "[TAP] Name — type Sora + OK"
+                sleep 1
+                type_text "Sora"
+                sleep 1
+                tap 897 1037
+            fi
+
+            if echo "$line" | grep -q "SceneAvatarEdit::init"; then
+                already_handled "avatar" && continue
+                echo "[TAP] Avatar — Confirm + OK"
+                sleep 2
+                tap 1200 1010
+                sleep 2
+                tap 1087 1026
+            fi
+
+            if echo "$line" | grep -q "SceneUnionRegister::init"; then
+                already_handled "union_reg" && continue
+                echo "[TAP] Union cutscene — SKIP, I understand, select Unicornis"
+                sleep 3
+                tap 100 50
+                sleep 3
+                tap 897 1037
+                sleep 2
+                tap 897 216
+            fi
+
+            if echo "$line" | grep -q "openPopUpbeLongToUnion"; then
+                already_handled "join_union" && continue
+                echo "[TAP] Join Unicornis — OK"
+                sleep 1
+                tap 1162 815
+                sleep 3
+                tap 100 50
+            fi
+
+            if echo "$line" | grep -q "startTutorialStage"; then
+                already_handled "battle" && continue
+                echo ""
+                echo "=== TUTORIAL BATTLE STARTING ==="
+                echo "=== Frida log: $FRIDA_LOG ==="
+            fi
+
+        done
+        LAST_LINE=$TOTAL
+    fi
+
+    # Check if battle started
+    grep -q "startTutorialStage" "$FRIDA_LOG" 2>/dev/null && break
+
+    sleep 0.5
+done
 
 echo ""
-echo "=== Reached EULA screen ==="
-echo "=== Frida log: $FRIDA_LOG ==="
-echo ""
-echo "Next steps (manual or extend script):"
-echo "  Accept EULA:      tap 1350 950"
-echo "  Birthday Register: tap 897 648, then 1120 648"
-echo "  Download:          tap 897 864"
-echo "  Collect jewels:    tap 897 864"
-echo "  Name OK:           tap 897 1037"
-echo "  Avatar confirm:    tap 1200 1010, then 1087 1026"
-echo "  Union OK:          tap 1162 815"
-echo "  SKIP cutscene:     tap 1700 50"
-
-# Keep frida alive
+echo "=== Auto tutorial complete ==="
+echo "Frida log: $FRIDA_LOG"
 wait $FRIDA_PID 2>/dev/null
