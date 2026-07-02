@@ -120,7 +120,7 @@
 
 ### Missing
 - [ ] BGI index display — show name→entry mapping when selecting a BGI entry (unencrypted ones)
-- [ ] Master data display — decrypt and show parsed fields for m*.jpg entries (avatar parts, medals, etc.)
+- [x] Master data display — decrypt and show parsed fields for m*.jpg entries via MasterDataParser schemas
 - [ ] Multi-container view — open .png + .mp4 pair together, resolve names via BGI
 - [ ] Batch export — export all entries or filtered subset
 - [ ] Image gallery — thumbnail grid view for BTF entries
@@ -137,6 +137,16 @@
 - [ ] **Save field documentation** — Map the 168 entry names to their game meanings
 - [ ] **Save editor** — Modify and re-encrypt save entries
 - [ ] **Save repacker** — Re-encode to BGAD and base64-wrap back to XML
+
+---
+
+## Private Server
+
+- [ ] **Remove v6 binary patch dependency** — Currently the single-byte patch at 0x4BB08D (BNE→B) bypasses `verifyResponse` MD5 checking on all API responses. Need to reverse the MD5 signing the game expects and implement it server-side so the unpatched binary works.
+- [ ] **Hardcode server URLs** — Replace `api.sp.kingdomhearts.com` references with a custom domain (to be created). Applies to: DNS redirect, hosts file, need/url handler, resource download URLs.
+- [ ] **Tutorial battle** — Black screen after union selection cutscene. Need to reverse which stage/enemy/medal IDs the tutorial expects and serve correct data. Likely needs: stage, enemy, medal, battleMisc, tutorialMisc, skill tables with real data.
+- [ ] **Resource download chunking** — Working (5×250MB chunks for 1.2GB misc.mp4). BGI must include `md5` + `size` BGAD entries for post-download validation.
+- [ ] **Avatar cutscene sync** — Avatar editor selections don't carry over to cutscenes. The `userAvatar` in login response (action 59) is hardcoded; needs to store and return the user's actual selections.
 
 ---
 

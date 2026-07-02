@@ -25,7 +25,9 @@
 - Avatar confirm OK: 1087, 1026 (center+5% X, 5% from bottom Y)
 
 ## Union Selection
+- Union Info "I understand" OK: 897, 1037 (center x, bottom — same as Name OK)
+- Union option (first/top): 897, 216 (center x, ~20% from top)
 - Union Confirm OK: 1162, 815 (from Union_Popup2.json x=157,y=-158 relative to window at (480,315))
 
 ## Cutscene
-- SKIP button: ~1700, 50 (top-right corner)
+- SKIP button: ~100, 50 (top-left corner)
