@@ -54,11 +54,7 @@ def _read_string(data: bytes, offset: int, size: int) -> (Any, int):
         s = raw.decode('utf-8')
     except UnicodeDecodeError:
         s = raw.decode('shift-jis', errors='replace')
-    padded = size
-    remainder = padded % 4
-    if remainder:
-        padded += 4 - remainder
-    return s, offset + padded
+    return s, offset + size
 
 
 def _read_int_array(data: bytes, offset: int, count: int) -> (list, int):
@@ -132,6 +128,260 @@ SCHEMAS: Dict[str, list] = {
         ("worldId", "int"),
         ("name", "str", 129),
     ],
+    "stage": [
+        ("stageId", "int"),
+        ("id", "int"),
+        ("name", "str", 129),
+        ("mapName", "str", 129),
+        ("useAp", "int"),
+        ("chapterId", "int"),
+        ("worldId", "int"),
+        ("thumbId", "int"),
+        ("stageKind", "int"),
+        ("showIcon", "int"),
+        ("validBeforeDrama", "int"),
+        ("beforeDramaId", "int[]", 5),
+        ("beforeDramaType", "int[]", 5),
+        ("validAfterDrama", "int"),
+        ("afterDramaId", "int[]", 5),
+        ("afterDramaType", "int[]", 5),
+        ("validClearGetTitle", "int"),
+        ("clearGetTitle", "int"),
+        ("validClearGetSphere", "int"),
+        ("clearGetSphere", "int"),
+        ("resetClearGet", "int"),
+        ("validClearGetItem", "int"),
+        ("clearGetItemType", "int[]", 3),
+        ("clearGetItemId", "int[]", 3),
+        ("clearGetAssignSkillType", "int[]", 3),
+        ("clearGetAssignSkillId", "int[]", 3),
+        ("clearGetAssignSkillLv", "int[]", 3),
+        ("clearGetItemNum", "int[]", 3),
+        ("resetSubMission", "int"),
+        ("validSubmission", "int"),
+        ("submissionRequire", "int[]", 3),
+        ("submissionName", "str[]", 3, 129),
+        ("submissionDataType", "int[]", 3),
+        ("submissionIdType", "int[]", 3),
+        ("submissionId", "int[]", 3),
+        ("submissionNum", "int[]", 3),
+        ("submissionRewardType", "int[]", 3),
+        ("submissionItemId", "int[]", 3),
+        ("submissionSkillType", "int[]", 3),
+        ("submissionSkillId", "int[]", 3),
+        ("submissionSkillLv", "int[]", 3),
+        ("submissionItemNum", "int[]", 3),
+        ("raidBoss", "int"),
+        ("bgmField", "int"),
+        ("bgmBattle", "int"),
+        ("bgmBoss", "int"),
+    ],
+    "enemy": [
+        ("enemyId", "int"),
+        ("name", "str", 65),
+        ("flavor", "str", 513),
+        ("displayId", "int"),
+        ("show", "int"),
+        ("showSwf", "int"),
+        ("showFrame", "int"),
+        ("hideFrame", "int"),
+        ("moveSpeed", "int"),
+        ("hitRadius", "int"),
+        ("tapRadius", "int"),
+        ("width", "int"),
+        ("height", "int"),
+        ("spBattle", "int"),
+        ("kind", "int"),
+        ("attribute", "int"),
+        ("validGrowth", "int"),
+        ("baseLv", "int[]", 6),
+        ("hp", "int[]", 5),
+        ("attack", "int[]", 5),
+        ("defense", "int[]", 5),
+        ("exp", "int[]", 5),
+        ("money", "int[]", 5),
+        ("raidPoint", "int[]", 5),
+        ("lux", "int[]", 5),
+        ("attackCp", "int"),
+        ("suppressCp", "int"),
+        ("attackHp", "int"),
+        ("suppressHp", "int"),
+        ("suppressGuilt", "int"),
+        ("battlePattern", "int"),
+        ("displayHeight", "int"),
+        ("runaway", "int"),
+        ("neverAttack", "int"),
+        ("validSkill", "int"),
+        ("skillId", "int[]", 5),
+        ("skillRequire", "int[]", 5),
+        ("skillRequireArg", "int[]", 5),
+        ("skillOdds", "int[]", 5),
+        ("protectPoison", "int"),
+        ("protectDeepPoison", "int"),
+        ("protectSleep", "int"),
+        ("protectParalysis", "int"),
+        ("registPoison", "int"),
+        ("registDeepPoison", "int"),
+        ("registSleep", "int"),
+        ("registParalysis", "int"),
+        ("bufAttack", "int"),
+        ("bufDefense", "int"),
+        ("bufAttackPower", "int"),
+        ("bufDefensePower", "int"),
+        ("bufAttackSpeed", "int"),
+        ("bufDefenseSpeed", "int"),
+        ("bufAttackMagic", "int"),
+        ("bufDefenseMagic", "int"),
+        ("bufTurn", "int"),
+        ("bufCount", "int"),
+        ("statusAilments", "int[]", 5),
+        ("statusAilmentsTurn", "int"),
+        ("statusAilmentsCount", "int"),
+    ],
+    "enemyAttack": [
+        ("enemyAttackId", "int"),
+        ("name", "str", 65),
+        ("attackMotion", "int"),
+        ("hitEffect", "int"),
+        ("effectDirectionFix", "int"),
+        ("display", "int"),
+        ("choiseAttribute", "int"),
+        ("hitCount", "int"),
+        ("power", "int"),
+        ("critical", "int"),
+        ("criticalPower", "int"),
+        ("target", "int"),
+        ("effect", "int"),
+        ("addTarget", "int"),
+        ("addTurn", "int"),
+        ("addCount", "int"),
+        ("bufAttack", "int"),
+        ("bufDefense", "int"),
+        ("bufAttackPower", "int"),
+        ("bufDefensePower", "int"),
+        ("bufAttackSpeed", "int"),
+        ("bufDefenseSpeed", "int"),
+        ("bufAttackMagic", "int"),
+        ("bufDefenseMagic", "int"),
+        ("resetAttack", "int"),
+        ("resetDefense", "int"),
+        ("resetAttackPower", "int"),
+        ("resetDefensePower", "int"),
+        ("resetAttackSpeed", "int"),
+        ("resetDefenseSpeed", "int"),
+        ("resetAttackMagic", "int"),
+        ("resetDefenseMagic", "int"),
+        ("heal", "int"),
+        ("healShake", "int"),
+        ("poison", "int"),
+        ("deepPoison", "int"),
+        ("sleep", "int"),
+        ("paralysis", "int"),
+        ("curePoison", "int"),
+        ("cureSleep", "int"),
+        ("cureParalysis", "int"),
+    ],
+    "skill": [
+        ("skillId", "int"),
+        ("imageId", "int"),
+        ("thumbId", "int"),
+        ("name", "str", 65),
+        ("description", "str", 129),
+        ("rank", "int"),
+        ("maxLv", "int"),
+        ("expType", "int"),
+        ("sortId", "int"),
+        ("categoryEvolve", "int"),
+        ("invokeType", "int"),
+        ("invokeProb", "int"),
+        ("invokeProbPerLv", "int"),
+        ("invokeShowTiming", "int"),
+        ("attackUp", "int"),
+        ("burstCancel", "int"),
+        ("damageCut", "int"),
+        ("dokonjo", "int"),
+        ("counter", "int"),
+        ("addAction", "int"),
+        ("addPoison", "int"),
+        ("addDeepPoison", "int"),
+        ("addSleep", "int"),
+        ("addParalysis", "int"),
+        ("conditionTurn", "int"),
+        ("conditionCount", "int"),
+        ("prizeHpUp", "int"),
+        ("prizeBurstUp", "int"),
+        ("luxUp", "int"),
+        ("moneyUp", "int"),
+        ("raidUp", "int"),
+    ],
+    "keyblade": [
+        ("keybladeId", "int"),
+        ("name", "str", 65),
+        ("description", "str", 129),
+        ("lv", "int"),
+        ("displayId", "int"),
+        ("category", "int"),
+        ("passive", "int"),
+        ("passivePower", "int"),
+        ("drawCount", "int"),
+        ("maxBurstGauge", "int"),
+        ("validConsist", "int"),
+        ("attribute", "int[]", 5),
+        ("darklight", "int[]", 5),
+        ("accord", "int[]", 5),
+        ("dlaccord", "int[]", 5),
+        ("partnerRate", "int"),
+        ("evolveId", "int"),
+        ("validNeedMaterial", "int"),
+        ("needMaterialId", "int[]", 5),
+        ("needMaterialNum", "int[]", 5),
+    ],
+    "medal": [
+        ("medalId", "int"),
+        ("imageId", "int"),
+        ("thumbId", "int"),
+        ("sortId", "int"),
+        ("_pad0", "int"),
+        ("_pad1", "int"),
+        ("name", "str", 65),
+        ("flavor", "str", 513),
+        ("advantage", "str", 513),
+        ("type", "int"),
+        ("attribute", "int"),
+        ("darklight", "int"),
+        ("validSource", "int"),
+        ("source", "int[]", 5),
+        ("rare", "int"),
+        ("skillSlot", "int"),
+        ("guiltValue", "int"),
+        ("maxLv", "int"),
+        ("expType", "int"),
+        ("cost", "int"),
+        ("minCost", "int"),
+        ("growthType", "int"),
+        ("attack", "int"),
+        ("maxAttack", "int"),
+        ("addMaxAttack", "int"),
+        ("defense", "int"),
+        ("maxDefense", "int"),
+        ("addMaxDefense", "int"),
+        ("validBurst", "int"),
+        ("burstId", "int"),
+        ("burstEnhanceCategory", "int[]", 5),
+        ("groupId", "int"),
+        ("sellSpherePoint", "int"),
+        ("materialExp", "int"),
+        ("sell", "int"),
+        ("sellPerLv", "int"),
+        ("enhanceAttack", "int"),
+        ("enhanceDefense", "int"),
+        ("enhanceCost", "int"),
+        ("validEvolve", "int"),
+        ("evolveId", "int"),
+        ("evolveMoney", "int"),
+        ("validEvolveNeed", "int"),
+        ("evolveNeedId", "int[]", 4),
+    ],
 }
 
 # Remap JSON field names to match the server's expected names
@@ -144,13 +394,23 @@ _FIELD_RENAMES = {
 }
 
 
+def _align4(offset: int) -> int:
+    r = offset % 4
+    return offset + (4 - r) if r else offset
+
+
 def _parse_entry(data: bytes, schema: list) -> Optional[Dict[str, Any]]:
     """Parse a decrypted entry using a schema definition."""
     result = {}
     offset = 0
+    prev_was_str = False
     for field_def in schema:
         name = field_def[0]
         ftype = field_def[1]
+
+        if ftype != "str" and prev_was_str:
+            offset = _align4(offset)
+            prev_was_str = False
 
         if offset >= len(data):
             break
@@ -162,6 +422,15 @@ def _parse_entry(data: bytes, schema: list) -> Optional[Dict[str, Any]]:
         elif ftype == "str":
             size = field_def[2]
             val, offset = _read_string(data, offset, size)
+            prev_was_str = True
+        elif ftype == "str[]":
+            count = field_def[2]
+            size = field_def[3]
+            val = []
+            for _ in range(count):
+                s, offset = _read_string(data, offset, size)
+                val.append(s)
+            prev_was_str = True
         elif ftype == "int[]":
             count = field_def[2]
             val, offset = _read_int_array(data, offset, count)
