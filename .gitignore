@@ -33,8 +33,17 @@ validate_data/
 # Frida/GDB debug scripts (ephemeral)
 tools/frida_*
 tools/gdb_*
+*.log
 
 # Misc generated files
 FEASIBILITY.md
 FINDINGS.md
 re_serve.cmd
+m501
+m*.jpg
+extra*.png
+extra*.mp4
+misc*.png
+misc*.mp4
+aliud*.*
+build_m

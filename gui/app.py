@@ -1004,7 +1004,7 @@ class KHUxExplorer(QMainWindow):
         escape_shortcut = QShortcut(QKeySequence("Escape"), self)
         escape_shortcut.activated.connect(lambda: self._search_edit.clear())
 
-        quit_shortcut = QShortcut(QKeySequence("Ctrl+C"), self)
+        quit_shortcut = QShortcut(QKeySequence("Ctrl+Q"), self)
         quit_shortcut.activated.connect(self.close)
 
     def _focus_search(self):
