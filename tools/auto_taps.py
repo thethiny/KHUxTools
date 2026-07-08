@@ -10,15 +10,19 @@ LOG_PATH = os.path.join(LOG_DIR, "latest.log")
 
 def tap(x, y):
     subprocess.run(["adb", "shell", "input", "tap", str(x), str(y)],
-                   capture_output=True, timeout=10)
+                   capture_output=True, timeout=5)
 
 def text(s):
     subprocess.run(["adb", "shell", "input", "text", s],
-                   capture_output=True, timeout=10)
+                   capture_output=True, timeout=5)
+
+def swipe(x1, y1, x2, y2, ms=300):
+    subprocess.run(["adb", "shell", "input", "swipe", str(x1), str(y1), str(x2), str(y2), str(ms)],
+                   capture_output=True, timeout=5)
 
 def key(code):
     subprocess.run(["adb", "shell", "input", "keyevent", str(code)],
-                   capture_output=True, timeout=10)
+                   capture_output=True, timeout=5)
 
 log_path = sys.argv[1] if len(sys.argv) > 1 else LOG_PATH
 handled = set()
@@ -61,6 +65,11 @@ while True:
             time.sleep(0.5)
             tap(897, 540)
 
+        if "SceneAgreement" in line and not already_handled("eula"):
+            print("[TAP] EULA — accept")
+            time.sleep(1)
+            tap(1226, 1026)
+
         if "SceneTutorialDownload" in line and not already_handled("download"):
             print("[TAP] Download")
             tap(897, 864)
@@ -78,7 +87,7 @@ while True:
         if "SceneAvatarEdit" in line and not already_handled("avatar"):
             print("[TAP] Avatar — Confirm + OK")
             tap(1200, 1010)
-            time.sleep(0.2)
+            time.sleep(0.5)
             tap(1087, 1026)
 
         if "SceneUnionRegister" in line and not already_handled("union"):
@@ -94,8 +103,76 @@ while True:
             tap(100, 50)
 
         if "SceneActionMap" in line and not already_handled("battle"):
+            print("[BATTLE] popup")
+            time.sleep(5.0)
+            tap(897, 1026)
+            print("[BATTLE] move to enemy 1")
+            time.sleep(0.5)
+            tap(1286, 402)
+            time.sleep(0.5)
+            swipe(1300, 540, 1300, 540, 600)
+            print("[BATTLE] popup")
+            time.sleep(0.5)
+            tap(897, 1026)
+            print("[BATTLE] attack x3")
+            time.sleep(0.5)
+            swipe(1440, 540, 480, 540)
+            time.sleep(0.6)
+            swipe(1440, 540, 480, 540)
+            time.sleep(0.6)
+            swipe(1440, 540, 480, 540)
+            print("[BATTLE] walk to enemy 2")
+            time.sleep(0.5)
+            swipe(1440, 540, 1440, 540, 2000)
+            print("[BATTLE] attack x3")
+            time.sleep(0.5)
+            swipe(1440, 540, 480, 540)
+            time.sleep(0.6)
+            swipe(1440, 540, 480, 540)
+            time.sleep(0.6)
+            swipe(1440, 540, 480, 540)
+            print("[BATTLE] move to phase 2")
+            time.sleep(0.5)
+            swipe(1440, 540, 1440, 540, 2000)
+            print("[BATTLE] popup")
+            time.sleep(1.0)
+            tap(897, 1026)
+            print("[BATTLE] open chest")
+            time.sleep(0.5)
+            tap(975, 208)
+            print("[BATTLE] popup")
+            time.sleep(0.5)
+            tap(897, 1026)
+            print("[BATTLE] walk to boss")
+            time.sleep(1.0)
+            tap(1388, 234)
+            time.sleep(0.5)
+            swipe(1440, 540, 1440, 540, 2000)
+            print("[BATTLE] boss animation")
+            time.sleep(5.0)
+            tap(897, 1026)
+            print("[BATTLE] medal swipe")
+            time.sleep(0.5)
+            swipe(145, 794, 960, 540, 500)
+            print("[BATTLE] attack x2")
+            time.sleep(5.0)
+            swipe(1440, 540, 480, 540)
+            time.sleep(0.6)
+            swipe(1440, 540, 480, 540)
+            print("[BATTLE] popup")
+            time.sleep(0.5)
+            tap(897, 1026)
+            print("[BATTLE] victory")
+            time.sleep(18.0)
+            tap(897, 540)
+            print("[BATTLE] claim rewards")
+            time.sleep(5.0)
+            tap(897, 1026)
+            print("[BATTLE] skip cutscene")
+            time.sleep(5.0)
+            tap(100, 50)
             print("")
-            print("=== TUTORIAL BATTLE STARTED ===")
+            print("=== BATTLE DONE ===")
 
         if "process-terminated" in line:
             print("Game ended. Ctrl+C to exit.")
