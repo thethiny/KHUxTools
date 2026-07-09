@@ -335,6 +335,29 @@ def _cs_widget_props(node):
     return x, y, w, h, ax, ay, tex_path, cn, nm, s9, s9_x, s9_y, s9_w, s9_h
 
 
+def _cs_bounding_box(node, px=0, py=0, show_hidden=False):
+    """Compute the bounding box of widgets in the tree. Returns (min_x, min_y, max_x, max_y) in cocos2d world coords."""
+    if not isinstance(node, dict):
+        return (px, py, px, py)
+    opts = node.get('options', node)
+    if not show_hidden and not opts.get('visible', True):
+        return (px, py, px, py)
+    x, y, w, h, ax, ay, *_ = _cs_widget_props(node)
+    awx = px + x
+    awy = py + y
+    bl_x = awx - w * ax
+    bl_y = awy - h * ay
+    min_x, min_y = bl_x, bl_y
+    max_x, max_y = bl_x + w, bl_y + h
+    for child in node.get('children', []):
+        cx1, cy1, cx2, cy2 = _cs_bounding_box(child, awx, awy, show_hidden)
+        min_x = min(min_x, cx1)
+        min_y = min(min_y, cy1)
+        max_x = max(max_x, cx2)
+        max_y = max(max_y, cy2)
+    return (min_x, min_y, max_x, max_y)
+
+
 def _scale9_resize(img, tw, th, cx, cy, cw, ch):
     """9-slice scale: corners fixed, edges stretch one axis, center stretches both."""
     sw, sh = img.size
@@ -1183,6 +1206,13 @@ class KHUxExplorer(QMainWindow):
         self._zoom_out_btn.clicked.connect(self._zoom_out)
         preview_toolbar.addWidget(self._zoom_out_btn)
 
+        from PyQt6.QtWidgets import QCheckBox
+        self._show_hidden_cb = QCheckBox("Show Hidden")
+        self._show_hidden_cb.setChecked(False)
+        self._show_hidden_cb.setStyleSheet(f"color: {COLORS['fg_dim']}; font-size: 9pt;")
+        self._show_hidden_cb.toggled.connect(self._on_show_hidden_toggled)
+        preview_toolbar.addWidget(self._show_hidden_cb)
+
         self._export_btn = QPushButton("Export")
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._export_entry)
@@ -1265,6 +1295,10 @@ class KHUxExplorer(QMainWindow):
 
         quit_shortcut = QShortcut(QKeySequence("Ctrl+Q"), self)
         quit_shortcut.activated.connect(self.close)
+
+    def _on_show_hidden_toggled(self, checked: bool):
+        if self.current_entry:
+            self._show_preview(self.current_entry)
 
     def _focus_search(self):
         self._search_edit.setFocus()
@@ -2078,17 +2112,18 @@ class KHUxExplorer(QMainWindow):
             self._image_preview.show_error(f"BTF decode error: {e}")
 
     def _find_entry(self, path: str) -> Optional[BGADEntry]:
-        """Find a BGAD entry by full path, basename, or decoded hex name."""
+        """Find a BGAD entry by full path, basename, prefix variations, or decoded hex name."""
         e = self.entry_map.get(path)
         if e:
             return e
+        for prefix in ('cocostudio/', 'cocostudio/publish/'):
+            e = self.entry_map.get(prefix + path)
+            if e:
+                return e
         base = path.rsplit('/', 1)[-1].rsplit('\\', 1)[-1]
         e = getattr(self, '_basename_map', {}).get(base)
         if e:
             return e
-        for name in self.entry_map:
-            if name.endswith('/' + base) or name.endswith('\\' + base):
-                return self.entry_map[name]
         return None
 
     def _render_lwf_visual(self, entry: BGADEntry) -> bool:
@@ -2176,20 +2211,23 @@ class KHUxExplorer(QMainWindow):
         if not _detect_cocostudio(obj):
             return False
 
+        if 'gameobjects' in obj and 'widgetTree' not in obj:
+            return self._render_scene_composite(obj)
+
         root = _cs_get_root(obj)
         if not isinstance(root, dict):
             return False
 
-        dw = int(obj.get('designWidth', 960))
-        dh = int(obj.get('designHeight', 640))
-        root_opts = root.get('options', root)
-        rw = int(root_opts.get('width', dw))
-        rh = int(root_opts.get('height', dh))
-        w = max(min(dw, rw) if rw < dw else dw, 100)
-        h = max(min(dh, rh) if rh < dh else dh, 100)
+        show_hidden = getattr(self, '_show_hidden_cb', None) and self._show_hidden_cb.isChecked()
+        bx1, by1, bx2, by2 = _cs_bounding_box(root, show_hidden=show_hidden)
+        pad = 1
+        w = max(int(bx2 - bx1) + pad * 2, 50)
+        h = max(int(by2 - by1) + pad * 2, 50)
+        off_x = (-bx1 if bx1 < 0 else 0) + pad
+        off_y = (-by1 if by1 < 0 else 0) + pad
 
         canvas = Image.new('RGBA', (w, h), (40, 40, 42, 255))
-        has_tex = self._cs_render_node(canvas, root, 0, 0)
+        has_tex = self._cs_render_node(canvas, root, off_x, off_y, show_hidden)
 
         if not has_tex:
             draw = ImageDraw.Draw(canvas)
@@ -2199,9 +2237,72 @@ class KHUxExplorer(QMainWindow):
         self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas))
         return True
 
-    def _cs_render_node(self, canvas, node, px, py) -> bool:
+    def _render_scene_composite(self, obj) -> bool:
+        """Render a Scene file by compositing referenced sub-layouts at their positions."""
+        canvas = Image.new('RGBA', (960, 640), (40, 40, 42, 255))
+        rendered_any = False
+        show_hidden = getattr(self, '_show_hidden_cb', None) and self._show_hidden_cb.isChecked()
+
+        def process_gameobjects(gos, parent_x, parent_y):
+            nonlocal rendered_any
+            for go in gos:
+                if not show_hidden and not go.get('visible', 1):
+                    continue
+                gx = parent_x + float(go.get('x', 0))
+                gy = parent_y + float(go.get('y', 0))
+                for comp in go.get('components', []):
+                    if comp.get('classname') != 'GUIComponent':
+                        continue
+                    fd = comp.get('fileData', {})
+                    if not fd.get('path'):
+                        continue
+                    sub_entry = self._find_entry(fd['path'])
+                    if not sub_entry:
+                        continue
+                    try:
+                        sub_obj = json.loads(sub_entry.data.decode('utf-8'))
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+                    if 'widgetTree' not in sub_obj:
+                        continue
+                    root = sub_obj['widgetTree']
+                    bx1, by1, bx2, by2 = _cs_bounding_box(root, show_hidden=show_hidden)
+                    sw = max(int(bx2 - bx1), 50)
+                    sh = max(int(by2 - by1), 50)
+                    sub_canvas = Image.new('RGBA', (sw, sh), (0, 0, 0, 0))
+                    ox = -bx1 if bx1 < 0 else 0
+                    oy = -by1 if by1 < 0 else 0
+                    self._cs_render_node(sub_canvas, root, ox, oy, show_hidden)
+                    dx = int(gx)
+                    dy = int(640 - gy - sub_canvas.height)
+                    sx, sy = 0, 0
+                    if dx < 0:
+                        sx = -dx; dx = 0
+                    if dy < 0:
+                        sy = -dy; dy = 0
+                    cw = min(sub_canvas.width - sx, canvas.width - dx)
+                    ch = min(sub_canvas.height - sy, canvas.height - dy)
+                    if cw > 0 and ch > 0:
+                        canvas.alpha_composite(sub_canvas.crop((sx, sy, sx + cw, sy + ch)), (dx, dy))
+                        rendered_any = True
+                process_gameobjects(go.get('gameobjects', []), gx, gy)
+
+        process_gameobjects(obj.get('gameobjects', []), 0, 0)
+
+        if not rendered_any:
+            draw = ImageDraw.Draw(canvas)
+            draw.text((20, 20), "Scene (no renderable GUIComponents)", fill=(150, 150, 150))
+
+        self._current_pil_image = canvas
+        self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas))
+        return True
+
+    def _cs_render_node(self, canvas, node, px, py, show_hidden=False) -> bool:
         """Recursively render CocoStudio widgets. px/py = parent's anchor point in world coords."""
         if not isinstance(node, dict) or not HAS_BTF:
+            return False
+        opts_vis = node.get('options', node)
+        if not show_hidden and not opts_vis.get('visible', True):
             return False
         x, y, w, h, ax, ay, tex_path, cn, nm, s9, s9x, s9y, s9w, s9h = _cs_widget_props(node)
 
@@ -2238,6 +2339,37 @@ class KHUxExplorer(QMainWindow):
                 except Exception:
                     pass
 
+        if cn == "Label" and w > 0 and h > 0:
+            opts = node.get("options", node)
+            text = opts.get("text", "")
+            if text:
+                font_size = int(opts.get("fontSize", 14))
+                cr = int(opts.get("colorR", 255))
+                cg = int(opts.get("colorG", 255))
+                cb = int(opts.get("colorB", 255))
+                halign = int(opts.get("hAlignment", 0))
+                valign = int(opts.get("vAlignment", 0))
+                font = self._get_cs_font(opts.get("fontName", ""), font_size)
+                draw = ImageDraw.Draw(canvas)
+                bbox = draw.textbbox((0, 0), text, font=font) if font else (0, 0, len(text) * 8, font_size)
+                tw = bbox[2] - bbox[0]
+                th = bbox[3] - bbox[1]
+                tx = pil_x
+                ty = pil_y
+                if halign == 1:
+                    tx = pil_x + (w - tw) // 2
+                elif halign == 2:
+                    tx = pil_x + w - tw
+                if valign == 1:
+                    ty = pil_y + (h - th) // 2
+                elif valign == 2:
+                    ty = pil_y + h - th
+                tx = max(0, tx)
+                ty = max(0, ty)
+                if 0 <= tx < canvas.width and 0 <= ty < canvas.height:
+                    draw.text((tx, ty), text, fill=(cr, cg, cb), font=font)
+                rendered = True
+
         if not rendered and w > 10 and h > 10:
             draw = ImageDraw.Draw(canvas)
             rx = max(0, pil_x)
@@ -2250,9 +2382,30 @@ class KHUxExplorer(QMainWindow):
                 draw.text((rx + 3, ry + 2), label, fill=(140, 180, 220))
 
         for child in node.get('children', []):
-            if self._cs_render_node(canvas, child, anchor_wx, anchor_wy):
+            if self._cs_render_node(canvas, child, anchor_wx, anchor_wy, show_hidden):
                 rendered = True
         return rendered
+
+    _cs_font_cache: Dict[tuple, Any] = {}
+
+    def _get_cs_font(self, font_name: str, size: int):
+        key = (font_name, size)
+        if key not in self._cs_font_cache:
+            import tempfile
+            e = self._find_entry(font_name)
+            if e and len(e.data) > 100:
+                fd, path = tempfile.mkstemp(suffix=".ttf")
+                os.write(fd, e.data)
+                os.close(fd)
+                try:
+                    self._cs_font_cache[key] = ImageFont.truetype(path, size)
+                except Exception:
+                    self._cs_font_cache[key] = None
+                finally:
+                    os.unlink(path)
+            else:
+                self._cs_font_cache[key] = None
+        return self._cs_font_cache[key]
 
     def _cs_wireframe(self, draw, canvas_h, node, px, py):
         """Draw wireframe boxes. px/py = parent's anchor point in world coords."""
