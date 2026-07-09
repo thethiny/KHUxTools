@@ -104,6 +104,7 @@ FORMAT_COLORS = {
     "akb":     "#ce9178",
     "plist":   "#dcdcaa",
     "json":    "#dcdcaa",
+    "ui":      "#4fc1e9",
     "text":    "#d4d4d4",
     "ttf":     "#e0a050",
     "stg":     "#569cd6",
@@ -129,6 +130,7 @@ FORMAT_BADGES = {
     "bmi":     "[BMI]",
     "cls":     "[CLS]",
     "chp":     "[CHP]",
+    "ui":      "[UI]",
     "index":   "[IDX]",
     "unknown": "[???]",
 }
@@ -169,6 +171,269 @@ def _pil_image_to_qpixmap(pil_img: "Image.Image") -> QPixmap:
                   QImage.Format.Format_RGBA8888)
     # QImage references external data buffer, so we must copy
     return QPixmap.fromImage(qimg.copy())
+
+
+def _decode_lwf_tex_name(name: str) -> str:
+    """Decode hex-encoded LWF texture names like 'atk1_68696b6172692e706e67.png' → 'atk1/hikari.png'."""
+    import re as _re
+    m = _re.match(r'^(.+?)_([0-9a-f]{6,})\.(\w+)$', name)
+    if m:
+        prefix, hexpart, _ext = m.groups()
+        try:
+            decoded = bytes.fromhex(hexpart).decode('utf-8')
+            return f"{prefix}/{decoded}"
+        except (ValueError, UnicodeDecodeError):
+            pass
+    return name
+
+
+def _parse_lwf_data(data: bytes) -> dict:
+    """Parse LWF binary and extract metadata, string table, and texture references."""
+    import struct as _st
+    info = {'strings': [], 'textures': [], 'texture_resolved': {}, 'counts': {}}
+
+    if len(data) < 16:
+        return info
+
+    version = _st.unpack_from('<I', data, 4)[0]
+    info['version'] = version
+    info['version_str'] = f"{(version >> 16) & 0xFF}.{(version >> 8) & 0xFF}.{version & 0xFF}"
+    info['data_size'] = _st.unpack_from('<I', data, 8)[0]
+    info['total_size'] = _st.unpack_from('<I', data, 12)[0]
+
+    if len(data) < 0x20:
+        return info
+
+    info['name_id'] = _st.unpack_from('<I', data, 0x10)[0]
+    info['string_byte_length'] = _st.unpack_from('<I', data, 0x14)[0]
+    info['animation_byte_length'] = _st.unpack_from('<I', data, 0x18)[0]
+
+    count_fields = [
+        (0x1C, 'translate'), (0x24, 'matrix'), (0x2C, 'color'),
+        (0x44, 'object'), (0x4C, 'texture'), (0x54, 'textureFragment'),
+        (0x5C, 'bitmap'), (0x64, 'bitmapEx'), (0x6C, 'font'),
+        (0x8C, 'graphicObject'), (0x9C, 'movieClip'), (0xAC, 'action'),
+        (0xB4, 'button'), (0xBC, 'label'), (0xC4, 'instanceName'),
+        (0xCC, 'event'), (0xF4, 'frame'), (0xFC, 'movie'),
+        (0x104, 'movieLinkage'), (0x10C, 'string'),
+    ]
+
+    for offset, name in count_fields:
+        if offset + 4 <= len(data):
+            info['counts'][name] = _st.unpack_from('<I', data, offset)[0]
+
+    # GREE LWF header: 324 bytes for all versions, 340 for v0x141211+
+    header_size = 340 if version >= 0x141211 else 324
+
+    string_byte_len = info['string_byte_length']
+    if string_byte_len > 0 and header_size + string_byte_len <= len(data):
+        string_data = data[header_size:header_size + string_byte_len]
+        strings = []
+        for p in string_data.split(b'\x00'):
+            if p:
+                try:
+                    s = p.decode('utf-8')
+                    if s and any(c.isprintable() for c in s):
+                        strings.append(s)
+                except (UnicodeDecodeError, ValueError):
+                    pass
+        info['strings'] = strings
+    else:
+        strings = []
+        current = bytearray()
+        for b in data[16:]:
+            if 32 <= b < 127:
+                current.append(b)
+            else:
+                if b == 0 and len(current) >= 3:
+                    strings.append(current.decode('ascii'))
+                current = bytearray()
+        info['strings'] = strings
+
+    img_exts = ('.png', '.btf', '.jpg', '.pvr', '.webp')
+    texture_set = set()
+    for s in info['strings']:
+        if any(s.lower().endswith(ext) for ext in img_exts):
+            texture_set.add(s)
+    info['textures'] = sorted(texture_set)
+
+    resolved = {}
+    for t in info['textures']:
+        resolved[t] = _decode_lwf_tex_name(t)
+    info['texture_resolved'] = resolved
+
+    return info
+
+
+def _detect_cocostudio(obj) -> bool:
+    """Check if a parsed JSON object is a CocoStudio layout."""
+    if not isinstance(obj, dict):
+        return False
+    if 'widgetTree' in obj:
+        return True
+    if 'classname' in obj and 'children' in obj:
+        return True
+    if 'nodeTree' in obj:
+        return True
+    if 'armature_data' in obj:
+        return True
+    if 'Content' in obj and isinstance(obj['Content'], dict):
+        inner = obj['Content']
+        if 'Content' in inner or 'classname' in inner:
+            return True
+    if 'gameobjects' in obj:
+        return True
+    return False
+
+
+def _cs_get_root(obj):
+    """Extract root widget node from any CocoStudio format version."""
+    if 'widgetTree' in obj:
+        return obj['widgetTree']
+    if 'nodeTree' in obj:
+        return obj['nodeTree']
+    if 'gameobjects' in obj:
+        return obj
+    if 'Content' in obj and 'classname' not in obj:
+        inner = obj['Content']
+        if isinstance(inner, dict) and 'Content' in inner and 'classname' not in inner:
+            return inner['Content']
+        return inner
+    return obj
+
+
+def _cs_widget_props(node):
+    """Extract widget properties from either v1.x or v2.x CocoStudio format."""
+    opts = node.get('options', node)
+    # v1.x: options.x/y, options.width/height, options.anchorPointX/Y, options.fileNameData.path
+    # v2.x: Position.X/Y, Size.X/Y, AnchorPoint.ScaleX/Y, FileData.Path
+    x = float(opts.get('x', 0)) if 'x' in opts else float(opts.get('Position', {}).get('X', 0))
+    y = float(opts.get('y', 0)) if 'y' in opts else float(opts.get('Position', {}).get('Y', 0))
+    w = int(opts.get('width', 0)) if 'width' in opts else int(opts.get('Size', {}).get('X', 0))
+    h = int(opts.get('height', 0)) if 'height' in opts else int(opts.get('Size', {}).get('Y', 0))
+    ax = float(opts.get('anchorPointX', 0.5)) if 'anchorPointX' in opts else float(opts.get('AnchorPoint', {}).get('ScaleX', 0.5))
+    ay = float(opts.get('anchorPointY', 0.5)) if 'anchorPointY' in opts else float(opts.get('AnchorPoint', {}).get('ScaleY', 0.5))
+
+    tex_path = None
+    for key in ('fileNameData', 'normalData', 'backGroundImageData', 'FileData'):
+        fnd = opts.get(key, {})
+        if isinstance(fnd, dict):
+            p = fnd.get('path') or fnd.get('Path')
+            if p:
+                tex_path = p
+                break
+
+    s9 = bool(opts.get('scale9Enable', False))
+    s9_x = int(opts.get('capInsetsX', 0))
+    s9_y = int(opts.get('capInsetsY', 0))
+    s9_w = int(opts.get('capInsetsWidth', 0))
+    s9_h = int(opts.get('capInsetsHeight', 0))
+
+    cn = node.get('classname', '?')
+    nm = opts.get('name', node.get('name', ''))
+
+    return x, y, w, h, ax, ay, tex_path, cn, nm, s9, s9_x, s9_y, s9_w, s9_h
+
+
+def _scale9_resize(img, tw, th, cx, cy, cw, ch):
+    """9-slice scale: corners fixed, edges stretch one axis, center stretches both."""
+    sw, sh = img.size
+    if cw <= 0 or ch <= 0:
+        cw, ch = max(1, sw - 2), max(1, sh - 2)
+        cx, cy = 1, 1
+    left, right = cx, sw - cx - cw
+    top, bottom = cy, sh - cy - ch
+    mid_w = max(1, tw - left - right)
+    mid_h = max(1, th - top - bottom)
+    result = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+    if left > 0 and top > 0:
+        result.paste(img.crop((0, 0, left, top)), (0, 0))
+    if right > 0 and top > 0:
+        result.paste(img.crop((sw - right, 0, sw, top)), (tw - right, 0))
+    if left > 0 and bottom > 0:
+        result.paste(img.crop((0, sh - bottom, left, sh)), (0, th - bottom))
+    if right > 0 and bottom > 0:
+        result.paste(img.crop((sw - right, sh - bottom, sw, sh)), (tw - right, th - bottom))
+    if top > 0:
+        result.paste(img.crop((left, 0, sw - right, top)).resize((mid_w, top), Image.LANCZOS), (left, 0))
+    if bottom > 0:
+        result.paste(img.crop((left, sh - bottom, sw - right, sh)).resize((mid_w, bottom), Image.LANCZOS), (left, th - bottom))
+    if left > 0:
+        result.paste(img.crop((0, top, left, sh - bottom)).resize((left, mid_h), Image.LANCZOS), (0, top))
+    if right > 0:
+        result.paste(img.crop((sw - right, top, sw, sh - bottom)).resize((right, mid_h), Image.LANCZOS), (tw - right, top))
+    result.paste(img.crop((left, top, sw - right, sh - bottom)).resize((mid_w, mid_h), Image.LANCZOS), (left, top))
+    return result
+
+
+def _cocostudio_tree_text(obj, indent=0, lines=None) -> list:
+    """Render a CocoStudio JSON layout as an indented widget tree."""
+    if lines is None:
+        lines = []
+
+    tex_list = obj.get('texturesPng', obj.get('textureList', []))
+    if tex_list:
+        lines.append("Referenced Textures:")
+        for t in tex_list[:20]:
+            lines.append(f"    {t}")
+        lines.append("")
+
+    if isinstance(obj, dict) and 'armature_data' in obj:
+        lines.append("Armature Data:")
+        for arm in obj.get('armature_data', []):
+            name = arm.get('name', '?')
+            bones = len(arm.get('bone_data', []))
+            lines.append(f"  Armature: {name} ({bones} bones)")
+            for bone in arm.get('bone_data', [])[:20]:
+                bname = bone.get('name', '?')
+                lines.append(f"    Bone: {bname}")
+        return lines
+
+    root = _cs_get_root(obj)
+    _cocostudio_node(root, indent, lines, is_last=True)
+    return lines
+
+
+def _cocostudio_node(obj, indent, lines, is_last=True, parent_lasts=None):
+    """Render a single CocoStudio node and its children."""
+    if parent_lasts is None:
+        parent_lasts = []
+    if not isinstance(obj, dict):
+        return
+
+    prefix = ""
+    if indent > 0:
+        for pl in parent_lasts:
+            prefix += "   " if pl else "│  "
+        prefix += "└─ " if is_last else "├─ "
+
+    x, y, w, h, _ax, _ay, tex_path, cn, nm, *_ = _cs_widget_props(obj)
+
+    parts = [f"[{cn}]"]
+    if nm:
+        parts.append(nm)
+    if w > 0 and h > 0:
+        parts.append(f"({w}x{h})")
+    if x != 0 or y != 0:
+        parts.append(f"@({x:.0f},{y:.0f})")
+    if tex_path:
+        parts.append(f"← {tex_path}")
+
+    lines.append(f"{prefix}{' '.join(parts)}")
+
+    children = obj.get('children', obj.get('gameobjects', []))
+    if isinstance(children, list):
+        child_lasts = parent_lasts + ([is_last] if indent > 0 else [])
+        for i, child in enumerate(children):
+            _cocostudio_node(child, indent + 1, lines,
+                             is_last=(i == len(children) - 1),
+                             parent_lasts=child_lasts)
+        for comp in obj.get('components', []):
+            if isinstance(comp, dict) and comp.get('fileData', {}).get('path'):
+                fd = comp['fileData']
+                cn = comp.get('classname', '?')
+                prefix = "   " * indent + ("   " if is_last else "│  ") if indent > 0 else ""
+                lines.append(f"{prefix}  → [{cn}] {fd['path']}")
 
 
 # ---------------------------------------------------------------------------
@@ -853,16 +1118,10 @@ class KHUxExplorer(QMainWindow):
         left_layout.setContentsMargins(4, 4, 2, 4)
         left_layout.setSpacing(2)
 
-        # Toolbar row
-        toolbar = QHBoxLayout()
-        open_btn = QPushButton("Open File")
-        open_btn.clicked.connect(self._open_file)
-        toolbar.addWidget(open_btn)
-
-        self._file_label = QLabel("No file loaded")
+        # File label
+        self._file_label = QLabel("No file loaded  (File > Open or Ctrl+O)")
         self._file_label.setStyleSheet(f"color: {COLORS['fg_dim']};")
-        toolbar.addWidget(self._file_label, 1)
-        left_layout.addLayout(toolbar)
+        left_layout.addWidget(self._file_label)
 
         # Search bar
         search_layout = QHBoxLayout()
@@ -1019,7 +1278,7 @@ class KHUxExplorer(QMainWindow):
             self,
             "Open KHUx File",
             "",
-            "KHUx Files (*.mp4 *.png *.jpg *.gif *.lwf *.bin);;All Files (*.*)",
+            "KHUx Files (*.mp4 *.png *.jpg *.gif *.lwf *.bin *.ExportJson *.json);;All Files (*.*)",
         )
         if path:
             self._load_file(path)
@@ -1065,6 +1324,11 @@ class KHUxExplorer(QMainWindow):
         self._resolve_names_via_bgi(path)
 
         self.entry_map = {e.name: e for e in entries}
+        self._basename_map: Dict[str, BGADEntry] = {}
+        for e in entries:
+            base = e.name.rsplit('/', 1)[-1].rsplit('\\', 1)[-1]
+            if base not in self._basename_map:
+                self._basename_map[base] = e
 
         self.entry_formats = {}
         self.entry_link_targets: Dict[str, int] = {}
@@ -1100,6 +1364,13 @@ class KHUxExplorer(QMainWindow):
                     else:
                         self.entry_formats[e.name] = "index"
                 else:
+                    if fmt in ("json", "text") and len(e.data) > 20:
+                        try:
+                            probe = json.loads(e.data.decode("utf-8", errors="replace"))
+                            if _detect_cocostudio(probe):
+                                fmt = "ui"
+                        except (json.JSONDecodeError, ValueError):
+                            pass
                     self.entry_formats[e.name] = fmt
             else:
                 self.entry_formats[e.name] = "unknown"
@@ -1416,6 +1687,8 @@ class KHUxExplorer(QMainWindow):
             self._show_akb_properties(entry)
         elif fmt in ("plist", "json"):
             self._show_text_properties(entry)
+        elif fmt == "lwf":
+            self._show_lwf_properties(entry)
 
         # BGI index display
         if HAS_BGI and entry.data[:4] == b'\x89BGI':
@@ -1480,8 +1753,79 @@ class KHUxExplorer(QMainWindow):
             self._props_text.append_separator()
             self._props_text.append_kv("Lines", str(lines))
             self._props_text.append_kv("Characters", str(len(text)))
+
+            stripped = text.lstrip()
+            if stripped.startswith(("{", "[")):
+                try:
+                    obj = json.loads(text)
+                    if _detect_cocostudio(obj):
+                        self._props_text.append_header("\nCocoStudio Layout")
+                        self._props_text.append_separator()
+                        classname = "?"
+                        node = obj
+                        if 'nodeTree' in node:
+                            node = node['nodeTree']
+                        if 'Content' in node and 'classname' not in node:
+                            node = node['Content']
+                            if isinstance(node, dict) and 'Content' in node:
+                                node = node['Content']
+                        if isinstance(node, dict):
+                            classname = node.get('classname', '?')
+                        self._props_text.append_kv("Root Class", classname)
+                        child_count = self._count_cocostudio_nodes(obj)
+                        self._props_text.append_kv("Total Widgets", str(child_count))
+                        if 'textureList' in obj:
+                            self._props_text.append_kv("Textures", str(len(obj['textureList'])))
+                        if 'armature_data' in obj:
+                            self._props_text.append_kv("Armatures", str(len(obj['armature_data'])))
+                except (json.JSONDecodeError, ValueError):
+                    pass
         except Exception:
             pass
+
+    @staticmethod
+    def _count_cocostudio_nodes(obj) -> int:
+        if not isinstance(obj, dict):
+            return 0
+        count = 1 if 'classname' in obj else 0
+        for key in ('children', 'nodeTree', 'Content', 'widgetTree'):
+            val = obj.get(key)
+            if isinstance(val, list):
+                for child in val:
+                    count += KHUxExplorer._count_cocostudio_nodes(child)
+            elif isinstance(val, dict):
+                count += KHUxExplorer._count_cocostudio_nodes(val)
+        return count
+
+    def _show_lwf_properties(self, entry: BGADEntry):
+        try:
+            info = _parse_lwf_data(entry.data)
+            self._props_text.append_header("\nLWF Animation")
+            self._props_text.append_separator()
+            self._props_text.append_kv("Version", info.get('version_str', '?'))
+            self._props_text.append_kv("Data Size", _format_size(info.get('data_size', 0)))
+            self._props_text.append_kv("Total Size", _format_size(info.get('total_size', 0)))
+            if 'string_byte_length' in info:
+                self._props_text.append_kv("String Data", _format_size(info['string_byte_length']))
+            if 'animation_byte_length' in info:
+                self._props_text.append_kv("Animation Data", _format_size(info['animation_byte_length']))
+
+            counts = info.get('counts', {})
+            active = {k: v for k, v in counts.items() if v > 0}
+            if active:
+                self._props_text.append_header("\nData Sections")
+                self._props_text.append_separator()
+                for name, val in active.items():
+                    self._props_text.append_kv(name, str(val))
+
+            textures = info.get('textures', [])
+            if textures:
+                self._props_text.append_header(f"\nTextures ({len(textures)})")
+                self._props_text.append_separator()
+                for t in textures:
+                    self._props_text.append_dim(f"  {t}")
+        except Exception as e:
+            self._props_text.append_dim(f"\n[LWF parse error: {e}]")
 
     def _is_avatar_container(self) -> bool:
         names = {e.name for e in self.entries}
@@ -1687,11 +2031,31 @@ class KHUxExplorer(QMainWindow):
             self._preview_notebook.setCurrentIndex(0)  # Preview tab
             self._zoom_in_btn.setEnabled(False)
             self._zoom_out_btn.setEnabled(False)
+        elif fmt == "lwf":
+            self._show_lwf_preview(entry)
+            self._render_lwf_visual(entry)
+            self._preview_stack.setCurrentIndex(0)
+            self._preview_notebook.setCurrentIndex(0)
+            self._zoom_in_btn.setEnabled(True)
+            self._zoom_out_btn.setEnabled(True)
+        elif fmt == "ui":
+            self._show_text_preview(entry)
+            self._render_cocostudio_visual(entry)
+            self._preview_stack.setCurrentIndex(0)
+            self._preview_notebook.setCurrentIndex(0)
+            self._zoom_in_btn.setEnabled(True)
+            self._zoom_out_btn.setEnabled(True)
         elif fmt in ("plist", "json") or self._is_text_data(entry.data):
             self._show_text_preview(entry)
-            self._preview_notebook.setCurrentIndex(1)  # Text tab
-            self._zoom_in_btn.setEnabled(False)
-            self._zoom_out_btn.setEnabled(False)
+            if self._render_cocostudio_visual(entry):
+                self._preview_stack.setCurrentIndex(0)
+                self._preview_notebook.setCurrentIndex(0)
+                self._zoom_in_btn.setEnabled(True)
+                self._zoom_out_btn.setEnabled(True)
+            else:
+                self._preview_notebook.setCurrentIndex(1)
+                self._zoom_in_btn.setEnabled(False)
+                self._zoom_out_btn.setEnabled(False)
         elif HAS_MASTER_DATA and self._is_master_data_container() and entry.name.isdigit() and len(entry.data) >= 8:
             self._show_master_data_preview(entry)
             self._zoom_in_btn.setEnabled(False)
@@ -1712,6 +2076,259 @@ class KHUxExplorer(QMainWindow):
 
         except Exception as e:
             self._image_preview.show_error(f"BTF decode error: {e}")
+
+    def _find_entry(self, path: str) -> Optional[BGADEntry]:
+        """Find a BGAD entry by full path, basename, or decoded hex name."""
+        e = self.entry_map.get(path)
+        if e:
+            return e
+        base = path.rsplit('/', 1)[-1].rsplit('\\', 1)[-1]
+        e = getattr(self, '_basename_map', {}).get(base)
+        if e:
+            return e
+        for name in self.entry_map:
+            if name.endswith('/' + base) or name.endswith('\\' + base):
+                return self.entry_map[name]
+        return None
+
+    def _render_lwf_visual(self, entry: BGADEntry) -> bool:
+        """Render LWF referenced textures as a visual grid in the Preview tab."""
+        if not HAS_PIL:
+            return False
+        info = _parse_lwf_data(entry.data)
+        tex_names = info.get('textures', [])
+        resolved = info.get('texture_resolved', {})
+
+        images = []
+        if HAS_BTF:
+            for tn in tex_names:
+                decoded = resolved.get(tn, tn)
+                e = self._find_entry(tn) or self._find_entry(decoded)
+                if e and len(e.data) >= 4 and e.data[:4] == b'\x89BTF':
+                    try:
+                        images.append((decoded.rsplit('/', 1)[-1], KHUxBTF.from_bytes(e.data).decode(use_canvas=True)))
+                    except Exception:
+                        pass
+
+        if not images:
+            canvas = Image.new('RGBA', (500, 300), (30, 30, 30, 255))
+            draw = ImageDraw.Draw(canvas)
+            y = 20
+            draw.text((20, y), f"LWF v{info.get('version_str', '?')}", fill=(200, 200, 200))
+            y += 25
+            active = {k: v for k, v in info.get('counts', {}).items() if 0 < v < 100000}
+            if active:
+                draw.text((20, y), f"{active.get('texture', 0)} textures, {active.get('frame', 0)} frames, {active.get('movie', 0)} movies", fill=(150, 150, 150))
+                y += 25
+            if tex_names:
+                draw.text((20, y), "Referenced textures:", fill=(140, 180, 220))
+                y += 20
+                for tn in tex_names[:8]:
+                    decoded = resolved.get(tn, tn)
+                    draw.text((30, y), decoded, fill=(120, 160, 200))
+                    y += 18
+                if not self.entry_map or len(self.entry_map) <= 1:
+                    y += 10
+                    draw.text((20, y), "Textures not found (open inside BGAD container)", fill=(200, 150, 80))
+            else:
+                draw.text((20, y), "No texture references found in string table", fill=(200, 150, 80))
+            self._current_pil_image = canvas
+            self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas))
+            return True
+
+        padding, max_thumb, label_h = 8, 256, 18
+        thumbs = []
+        for name, img in images:
+            s = min(max_thumb / max(img.width, 1), max_thumb / max(img.height, 1), 1.0)
+            if s < 1.0:
+                img = img.resize((int(img.width * s), int(img.height * s)), Image.LANCZOS)
+            thumbs.append((name, img))
+
+        cols = min(4, len(thumbs))
+        cell_w = max(t.width for _, t in thumbs) + padding * 2
+        cell_h = max(t.height for _, t in thumbs) + padding * 2 + label_h
+        rows = (len(thumbs) + cols - 1) // cols
+        title_h = 28
+
+        canvas = Image.new('RGBA', (cols * cell_w + padding, rows * cell_h + padding + title_h), (30, 30, 30, 255))
+        draw = ImageDraw.Draw(canvas)
+        draw.text((padding, 6), f"LWF Textures ({len(thumbs)})", fill=(200, 200, 200))
+
+        for i, (name, img) in enumerate(thumbs):
+            cx = (i % cols) * cell_w + padding
+            cy = (i // cols) * cell_h + padding + title_h
+            draw.rectangle([cx, cy, cx + cell_w - 1, cy + cell_h - 1], fill=(45, 45, 48), outline=(80, 80, 80))
+            canvas.alpha_composite(img, (cx + (cell_w - img.width) // 2, cy + padding))
+            draw.text((cx + 4, cy + cell_h - label_h), name[:30], fill=(170, 170, 170))
+
+        self._current_pil_image = canvas
+        self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas))
+        return True
+
+    def _render_cocostudio_visual(self, entry: BGADEntry) -> bool:
+        """Render a CocoStudio layout as a visual preview with textures or wireframe."""
+        if not HAS_PIL:
+            return False
+        try:
+            obj = json.loads(entry.data.decode("utf-8", errors="replace"))
+        except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+            return False
+        if not _detect_cocostudio(obj):
+            return False
+
+        root = _cs_get_root(obj)
+        if not isinstance(root, dict):
+            return False
+
+        dw = int(obj.get('designWidth', 960))
+        dh = int(obj.get('designHeight', 640))
+        root_opts = root.get('options', root)
+        rw = int(root_opts.get('width', dw))
+        rh = int(root_opts.get('height', dh))
+        w = max(min(dw, rw) if rw < dw else dw, 100)
+        h = max(min(dh, rh) if rh < dh else dh, 100)
+
+        canvas = Image.new('RGBA', (w, h), (40, 40, 42, 255))
+        has_tex = self._cs_render_node(canvas, root, 0, 0)
+
+        if not has_tex:
+            draw = ImageDraw.Draw(canvas)
+            self._cs_wireframe(draw, canvas.height, root, 0, 0)
+
+        self._current_pil_image = canvas
+        self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas))
+        return True
+
+    def _cs_render_node(self, canvas, node, px, py) -> bool:
+        """Recursively render CocoStudio widgets. px/py = parent's anchor point in world coords."""
+        if not isinstance(node, dict) or not HAS_BTF:
+            return False
+        x, y, w, h, ax, ay, tex_path, cn, nm, s9, s9x, s9y, s9w, s9h = _cs_widget_props(node)
+
+        anchor_wx = px + x
+        anchor_wy = py + y
+        bl_x = anchor_wx - w * ax
+        bl_y = anchor_wy - h * ay
+        pil_x = int(bl_x)
+        pil_y = int(canvas.height - bl_y - h)
+
+        rendered = False
+        if tex_path:
+            e = self._find_entry(tex_path)
+            if e and len(e.data) >= 4 and e.data[:4] == b'\x89BTF':
+                try:
+                    img = KHUxBTF.from_bytes(e.data).decode(use_canvas=True)
+                    if w > 0 and h > 0 and (w, h) != img.size:
+                        if s9:
+                            img = _scale9_resize(img, w, h, s9x, s9y, s9w, s9h)
+                        else:
+                            img = img.resize((w, h), Image.LANCZOS)
+                    src_x, src_y = 0, 0
+                    dx, dy = pil_x, pil_y
+                    if dx < 0:
+                        src_x = -dx; dx = 0
+                    if dy < 0:
+                        src_y = -dy; dy = 0
+                    cw = min(img.width - src_x, canvas.width - dx)
+                    ch = min(img.height - src_y, canvas.height - dy)
+                    if cw > 0 and ch > 0:
+                        cropped = img.crop((src_x, src_y, src_x + cw, src_y + ch))
+                        canvas.alpha_composite(cropped, (dx, dy))
+                        rendered = True
+                except Exception:
+                    pass
+
+        if not rendered and w > 10 and h > 10:
+            draw = ImageDraw.Draw(canvas)
+            rx = max(0, pil_x)
+            ry = max(0, pil_y)
+            rw = min(w, canvas.width - rx)
+            rh = min(h, canvas.height - ry)
+            if rw > 0 and rh > 0:
+                draw.rectangle([rx, ry, rx + rw, ry + rh], outline=(90, 140, 200))
+                label = f"{cn}: {nm}"[:35] if nm else str(cn)
+                draw.text((rx + 3, ry + 2), label, fill=(140, 180, 220))
+
+        for child in node.get('children', []):
+            if self._cs_render_node(canvas, child, anchor_wx, anchor_wy):
+                rendered = True
+        return rendered
+
+    def _cs_wireframe(self, draw, canvas_h, node, px, py):
+        """Draw wireframe boxes. px/py = parent's anchor point in world coords."""
+        if not isinstance(node, dict):
+            return
+        x, y, w, h, ax, ay, _tp, cn, nm, *_ = _cs_widget_props(node)
+
+        anchor_wx = px + x
+        anchor_wy = py + y
+        bl_x = anchor_wx - w * ax
+        bl_y = anchor_wy - h * ay
+        pil_x = max(0, int(bl_x))
+        pil_y = max(0, int(canvas_h - bl_y - h))
+
+        if w > 10 and h > 10:
+            rw = min(w, int(draw.im.size[0]) - pil_x)
+            rh = min(h, int(draw.im.size[1]) - pil_y)
+            if rw > 0 and rh > 0:
+                draw.rectangle([pil_x, pil_y, pil_x + rw, pil_y + rh], outline=(90, 140, 200))
+                label = f"{cn}: {nm}"[:35] if nm else str(cn)
+                draw.text((pil_x + 3, pil_y + 2), label, fill=(140, 180, 220))
+
+        for child in node.get('children', []):
+            self._cs_wireframe(draw, canvas_h, child, anchor_wx, anchor_wy)
+
+    def _show_lwf_preview(self, entry: BGADEntry):
+        """Show LWF structure as formatted text in the text preview tab."""
+        try:
+            info = _parse_lwf_data(entry.data)
+            lines = []
+            lines.append(f"{'═' * 50}")
+            lines.append(f"  LWF Animation — v{info.get('version_str', '?')}")
+            lines.append(f"{'═' * 50}")
+            lines.append("")
+            lines.append(f"  Data Size:       {_format_size(info.get('data_size', 0))}")
+            lines.append(f"  Total Size:      {_format_size(info.get('total_size', 0))}")
+            if 'string_byte_length' in info:
+                lines.append(f"  String Data:     {_format_size(info['string_byte_length'])}")
+            if 'animation_byte_length' in info:
+                lines.append(f"  Animation Data:  {_format_size(info['animation_byte_length'])}")
+
+            counts = info.get('counts', {})
+            active = {k: v for k, v in counts.items() if v > 0}
+            if active:
+                lines.append("")
+                lines.append(f"{'─' * 50}")
+                lines.append("  Data Sections")
+                lines.append(f"{'─' * 50}")
+                for name, val in active.items():
+                    lines.append(f"    {name:<24} {val:>6}")
+
+            textures = info.get('textures', [])
+            if textures:
+                lines.append("")
+                lines.append(f"{'─' * 50}")
+                lines.append(f"  Textures ({len(textures)})")
+                lines.append(f"{'─' * 50}")
+                for t in textures:
+                    lines.append(f"    {t}")
+
+            strings = info.get('strings', [])
+            if strings:
+                lines.append("")
+                lines.append(f"{'─' * 50}")
+                lines.append(f"  String Table ({len(strings)} entries)")
+                lines.append(f"{'─' * 50}")
+                texture_set = set(textures)
+                for i, s in enumerate(strings[:300]):
+                    marker = "  [TEX]" if s in texture_set else ""
+                    lines.append(f"    [{i:4d}] {s}{marker}")
+                if len(strings) > 300:
+                    lines.append(f"    ... and {len(strings) - 300} more")
+
+            self._preview_text.setPlainText("\n".join(lines))
+        except Exception as e:
+            self._preview_text.setPlainText(f"LWF parse error: {e}")
 
     def _show_ttf_preview(self, entry: BGADEntry):
         """Render a TTF font preview: sample header + glyph grid."""
@@ -1876,6 +2493,23 @@ class KHUxExplorer(QMainWindow):
             if is_json:
                 try:
                     obj = json.loads(text)
+                    if _detect_cocostudio(obj):
+                        tree_lines = _cocostudio_tree_text(obj)
+                        tree_text = "\n".join(tree_lines)
+                        truncated = self._truncate_json(obj, depth=0, max_depth=4)
+                        pretty = json.dumps(truncated, indent=2, ensure_ascii=False)
+                        combined = (
+                            f"{'═' * 50}\n"
+                            f"  CocoStudio Layout\n"
+                            f"{'═' * 50}\n\n"
+                            f"{tree_text}\n\n"
+                            f"{'═' * 50}\n"
+                            f"  JSON Data\n"
+                            f"{'═' * 50}\n\n"
+                            f"{pretty}"
+                        )
+                        self._preview_text.setPlainText(combined)
+                        return
                     truncated = self._truncate_json(obj, depth=0, max_depth=3)
                     pretty = json.dumps(truncated, indent=2, ensure_ascii=False)
                     html = self._json_to_html(pretty)
@@ -2187,6 +2821,7 @@ class KHUxExplorer(QMainWindow):
         self.current_file = path
         self.entries = [entry]
         self.entry_map = {entry.name: entry}
+        self._basename_map = {entry.name: entry}
         self.entry_formats = {entry.name: "btf"}
 
         norm_path = os.path.normpath(path)
@@ -2223,6 +2858,7 @@ class KHUxExplorer(QMainWindow):
         self.current_file = path
         self.entries = [entry]
         self.entry_map = {entry.name: entry}
+        self._basename_map = {entry.name: entry}
         self.entry_formats = {entry.name: fmt}
 
         norm_path = os.path.normpath(path)

@@ -1,12 +1,22 @@
-"""Auto-tap through KHUx tutorial by polling Frida log output."""
+"""Auto-tap through KHUx tutorial by polling Frida log output.
+
+Usage:
+    python tools/auto_taps.py                    # full run including battle
+    python tools/auto_taps.py --skip-battle      # stop at battle's first OK
+"""
+import argparse
 import subprocess
 import time
-import sys
 import os
 
 # Fixed log path — frida_run.py always writes here
 LOG_DIR = os.path.join(os.path.dirname(__file__), "..", "frida_log")
 LOG_PATH = os.path.join(LOG_DIR, "latest.log")
+
+parser = argparse.ArgumentParser()
+parser.add_argument("log", nargs="?", default=None, help="Log file path")
+parser.add_argument("--skip-battle", action="store_true", help="Stop at battle's first OK popup")
+cli_args = parser.parse_args()
 
 def tap(x, y):
     subprocess.run(["adb", "shell", "input", "tap", str(x), str(y)],
@@ -24,7 +34,7 @@ def key(code):
     subprocess.run(["adb", "shell", "input", "keyevent", str(code)],
                    capture_output=True, timeout=5)
 
-log_path = sys.argv[1] if len(sys.argv) > 1 else LOG_PATH
+log_path = cli_args.log or LOG_PATH
 handled = set()
 last_line = 0
 
@@ -106,13 +116,16 @@ while True:
             print("[BATTLE] popup")
             time.sleep(5.0)
             tap(897, 1026)
+            if cli_args.skip_battle:
+                print("=== SKIP BATTLE — stopped at first OK ===")
+                continue
             print("[BATTLE] move to enemy 1")
             time.sleep(0.5)
             tap(1286, 402)
             time.sleep(0.5)
             swipe(1300, 540, 1300, 540, 600)
             print("[BATTLE] popup")
-            time.sleep(0.5)
+            time.sleep(2.0)
             tap(897, 1026)
             print("[BATTLE] attack x3")
             time.sleep(0.5)
@@ -138,10 +151,10 @@ while True:
             time.sleep(1.0)
             tap(897, 1026)
             print("[BATTLE] open chest")
-            time.sleep(0.5)
+            time.sleep(1.0)
             tap(975, 208)
             print("[BATTLE] popup")
-            time.sleep(0.5)
+            time.sleep(1.0)
             tap(897, 1026)
             print("[BATTLE] walk to boss")
             time.sleep(1.0)
