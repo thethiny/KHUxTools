@@ -1574,6 +1574,36 @@ class KHUxExplorer(QMainWindow):
         self._anim_frame_label.setVisible(False)
         preview_toolbar.addWidget(self._anim_frame_label)
 
+        self._scene_reset_btn = QPushButton("0")
+        self._scene_reset_btn.setFixedWidth(24)
+        self._scene_reset_btn.setToolTip("Reset to frame 0")
+        self._scene_reset_btn.setVisible(False)
+        self._scene_reset_btn.clicked.connect(self._scene_reset)
+        preview_toolbar.addWidget(self._scene_reset_btn)
+
+        self._scene_prev_btn = QPushButton("|<")
+        self._scene_prev_btn.setFixedWidth(28)
+        self._scene_prev_btn.setVisible(False)
+        self._scene_prev_btn.clicked.connect(self._scene_step_back)
+        preview_toolbar.addWidget(self._scene_prev_btn)
+
+        self._scene_play_btn = QPushButton("Play")
+        self._scene_play_btn.setFixedWidth(50)
+        self._scene_play_btn.setVisible(False)
+        self._scene_play_btn.clicked.connect(self._scene_toggle_play)
+        preview_toolbar.addWidget(self._scene_play_btn)
+
+        self._scene_next_btn = QPushButton(">|")
+        self._scene_next_btn.setFixedWidth(28)
+        self._scene_next_btn.setVisible(False)
+        self._scene_next_btn.clicked.connect(self._scene_step_forward)
+        preview_toolbar.addWidget(self._scene_next_btn)
+
+        self._scene_frame_label = QLabel("")
+        self._scene_frame_label.setStyleSheet(f"color: {COLORS['fg_dim']}; font-size: 9pt;")
+        self._scene_frame_label.setVisible(False)
+        preview_toolbar.addWidget(self._scene_frame_label)
+
         self._plist_prev_btn = QPushButton("<")
         self._plist_prev_btn.setFixedWidth(28)
         self._plist_prev_btn.setVisible(False)
@@ -1594,7 +1624,7 @@ class KHUxExplorer(QMainWindow):
 
         self._export_btn = QPushButton("Export")
         self._export_btn.setEnabled(False)
-        self._export_btn.clicked.connect(self._export_entry)
+        self._export_btn.clicked.connect(self._on_export_clicked)
         preview_toolbar.addWidget(self._export_btn)
 
         center_layout.addLayout(preview_toolbar)
@@ -2017,9 +2047,64 @@ class KHUxExplorer(QMainWindow):
         ctrl['mode_combo'].setCurrentIndex(1)
         self._on_scene_anim_changed()
 
+    def _scene_reset(self):
+        if hasattr(self, '_scene_anim_timer') and self._scene_anim_timer.isActive():
+            self._scene_anim_timer.stop()
+            self._scene_play_btn.setText("Play")
+        self._scene_playing_frame = 0
+        self._scene_set_frame(0)
+
+    def _scene_toggle_play(self):
+        if hasattr(self, '_scene_anim_timer') and self._scene_anim_timer.isActive():
+            self._scene_anim_timer.stop()
+            self._scene_play_btn.setText("Play")
+        else:
+            self._scene_playing_frame = getattr(self, '_scene_playing_frame', 0)
+            if not hasattr(self, '_scene_anim_timer'):
+                self._scene_anim_timer = QTimer(self)
+                self._scene_anim_timer.timeout.connect(self._scene_anim_tick)
+            self._scene_anim_timer.start(17)
+            self._scene_play_btn.setText("Pause")
+
+    def _scene_step_forward(self):
+        self._scene_playing_frame = getattr(self, '_scene_playing_frame', 0) + 1
+        self._scene_set_frame(self._scene_playing_frame)
+
+    def _scene_step_back(self):
+        self._scene_playing_frame = max(0, getattr(self, '_scene_playing_frame', 0) - 1)
+        self._scene_set_frame(self._scene_playing_frame)
+
+    def _scene_set_frame(self, frame):
+        for ctrl in self._scene_anim_controls:
+            mode = ctrl['mode_combo'].currentIndex()
+            if mode == 0:
+                continue
+            mov_idx = ctrl['mov_combo'].currentIndex()
+            movs = ctrl['anim_data'].get('mov_data', [])
+            if mov_idx >= len(movs):
+                continue
+            dr = movs[mov_idx].get('dr', 1)
+            if mode == 1:
+                ctrl['frame'] = dr - 1
+            elif mode == 3:
+                ctrl['frame'] = frame % dr
+            else:
+                ctrl['frame'] = min(frame, dr - 1)
+        self._render_scene_with_anims()
+        self._scene_frame_label.setText(f"F: {frame}")
+
     def _on_scene_anim_changed(self, _idx=None):
         for ctrl in self._scene_anim_controls:
-            ctrl['frame'] = 0
+            mode = ctrl['mode_combo'].currentIndex()
+            if mode == 1:
+                mov_idx = ctrl['mov_combo'].currentIndex()
+                movs = ctrl['anim_data'].get('mov_data', [])
+                if mov_idx < len(movs):
+                    ctrl['frame'] = movs[mov_idx].get('dr', 1) - 1
+                else:
+                    ctrl['frame'] = 0
+            else:
+                ctrl['frame'] = 0
         if hasattr(self, '_scene_anim_timer') and self._scene_anim_timer.isActive():
             self._scene_anim_timer.stop()
         any_playing = any(
@@ -2034,28 +2119,8 @@ class KHUxExplorer(QMainWindow):
         self._render_scene_with_anims()
 
     def _scene_anim_tick(self):
-        any_active = False
-        for ctrl in self._scene_anim_controls:
-            mode = ctrl['mode_combo'].currentIndex()
-            if mode not in (2, 3):
-                continue
-            mov_idx = ctrl['mov_combo'].currentIndex()
-            movs = ctrl['anim_data'].get('mov_data', [])
-            if mov_idx >= len(movs):
-                continue
-            dr = movs[mov_idx].get('dr', 1)
-            ctrl['frame'] += 1
-            if ctrl['frame'] >= dr:
-                if mode == 3:
-                    ctrl['frame'] = 0
-                    any_active = True
-                else:
-                    ctrl['frame'] = dr - 1
-            else:
-                any_active = True
-        if not any_active:
-            self._scene_anim_timer.stop()
-        self._render_scene_with_anims()
+        self._scene_playing_frame = getattr(self, '_scene_playing_frame', 0) + 1
+        self._scene_set_frame(self._scene_playing_frame)
 
     def _render_scene_with_anims(self):
         scene_obj = getattr(self, '_scene_obj', None)
@@ -2124,7 +2189,7 @@ class KHUxExplorer(QMainWindow):
                             continue
                         mov = movs[mov_idx]
                         dr = mov.get('dr', 1)
-                        frame = dr - 1 if mode == 1 else ctrl['frame']
+                        frame = ctrl['frame']
                         anim_single = {'mov_data': [mov]}
                         frame_img = _render_anim_frame(anim_single, ctrl['armature'],
                                                         ctrl['sprites'], frame,
@@ -3124,6 +3189,12 @@ class KHUxExplorer(QMainWindow):
         self._anim_play_btn.setVisible(False)
         self._anim_slider.setVisible(False)
         self._anim_frame_label.setVisible(False)
+        self._scene_reset_btn.setVisible(False)
+        self._scene_prev_btn.setVisible(False)
+        self._scene_play_btn.setVisible(False)
+        self._scene_play_btn.setText("Play")
+        self._scene_next_btn.setVisible(False)
+        self._scene_frame_label.setVisible(False)
         if hasattr(self, '_anim_timer') and self._anim_timer.isActive():
             self._anim_timer.stop()
         if hasattr(self, '_scene_anim_timer') and self._scene_anim_timer.isActive():
@@ -3183,9 +3254,16 @@ class KHUxExplorer(QMainWindow):
                     self._populate_layer_list(root)
                 if fmt == "scene":
                     self._scene_obj = obj
+                    self._scene_playing_frame = 0
                     self._populate_scene_anims(obj)
                     self._render_scene_with_anims()
                     self._on_scene_anim_changed()
+                    self._scene_reset_btn.setVisible(True)
+                    self._scene_prev_btn.setVisible(True)
+                    self._scene_play_btn.setVisible(True)
+                    self._scene_next_btn.setVisible(True)
+                    self._scene_frame_label.setVisible(True)
+                    self._scene_frame_label.setText("F: 0")
                 else:
                     self._clear_scene_anims()
                     self._render_cocostudio_visual(entry)
@@ -4181,6 +4259,307 @@ class KHUxExplorer(QMainWindow):
     # -------------------------------------------------------------------
     # Export
     # -------------------------------------------------------------------
+    def _on_export_clicked(self):
+        if not self.current_entry:
+            return
+        fmt = self.entry_formats.get(self.current_entry.name, "")
+        menu = QMenu(self)
+        if fmt == "scene":
+            menu.addAction("Export PNG (as displayed)", self._export_scene_png)
+            menu.addAction("Export PNG (clean, first frame)", lambda: self._export_scene_clean_png(frame=0))
+            menu.addAction("Export PNG (clean, last frame)", lambda: self._export_scene_clean_png(frame=-1))
+            menu.addAction("Export MP4 (as displayed)", self._export_scene_mp4)
+            menu.addAction("Export MP4 (clean)", lambda: self._export_scene_mp4(clean=True))
+        elif fmt == "anim":
+            menu.addAction("Export MP4 (960x640 canvas)", self._export_anim_mp4)
+            menu.addAction("Export MP4 (true size)", lambda: self._export_anim_mp4(true_size=True))
+        elif fmt == "ui":
+            menu.addAction("Export Scene PNG (as displayed)", self._export_ui_scene_png)
+            menu.addAction("Export Image PNG (clean render)", self._export_ui_clean_png)
+        else:
+            menu.addAction("Export Entry...", self._export_entry)
+        menu.exec(self._export_btn.mapToGlobal(self._export_btn.rect().bottomLeft()))
+
+    def _export_default_name(self, suffix="", ext="png"):
+        if self.current_entry:
+            base = self.current_entry.name.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+            return f"{base}{suffix}.{ext}"
+        return f"export{suffix}.{ext}"
+
+    def _export_scene_png(self):
+        if self._current_pil_image:
+            path, _ = QFileDialog.getSaveFileName(self, "Export Scene PNG", self._export_default_name("_frame"), "PNG Image (*.png)")
+            if path:
+                self._current_pil_image.save(path, "PNG")
+                self._status_left.setText(f"Exported: {os.path.basename(path)}")
+
+    def _export_ui_scene_png(self):
+        if self._current_pil_image:
+            path, _ = QFileDialog.getSaveFileName(self, "Export Scene PNG", self._export_default_name("_scene"), "PNG Image (*.png)")
+            if path:
+                self._current_pil_image.save(path, "PNG")
+                self._status_left.setText(f"Exported: {os.path.basename(path)}")
+
+    def _export_scene_clean_png(self, frame=0):
+        if not getattr(self, '_scene_obj', None) or not HAS_PIL:
+            return
+        saved = {}
+        for attr in ('_draw_images_cb', '_draw_text_cb', '_draw_outlines_cb', '_show_hidden_cb'):
+            cb = getattr(self, attr, None)
+            if cb:
+                saved[attr] = cb.isChecked()
+                cb.blockSignals(True)
+        self._draw_images_cb.setChecked(True)
+        self._draw_text_cb.setChecked(True)
+        self._draw_outlines_cb.setChecked(False)
+        if hasattr(self, '_show_hidden_cb'):
+            self._show_hidden_cb.setChecked(False)
+        saved_frames = []
+        saved_modes = []
+        for ctrl in self._scene_anim_controls:
+            saved_frames.append(ctrl['frame'])
+            saved_modes.append(ctrl['mode_combo'].currentIndex())
+            ctrl['mode_combo'].blockSignals(True)
+            if ctrl['mode_combo'].currentIndex() == 0 and ctrl['anim_data'].get('mov_data'):
+                ctrl['mode_combo'].setCurrentIndex(1)
+            mov_idx = ctrl['mov_combo'].currentIndex()
+            movs = ctrl['anim_data'].get('mov_data', [])
+            if mov_idx < len(movs):
+                dr = movs[mov_idx].get('dr', 1)
+                ctrl['frame'] = 0 if frame == 0 else dr - 1
+        self._render_scene_with_anims()
+        export_img = self._current_pil_image.copy() if self._current_pil_image else None
+        for attr, val in saved.items():
+            cb = getattr(self, attr)
+            cb.setChecked(val)
+            cb.blockSignals(False)
+        for i, ctrl in enumerate(self._scene_anim_controls):
+            if i < len(saved_frames):
+                ctrl['frame'] = saved_frames[i]
+            if i < len(saved_modes):
+                ctrl['mode_combo'].setCurrentIndex(saved_modes[i])
+                ctrl['mode_combo'].blockSignals(False)
+        self._render_scene_with_anims()
+        suffix = "_first" if frame == 0 else "_last"
+        if export_img:
+            path, _ = QFileDialog.getSaveFileName(self, "Export Clean Scene PNG", self._export_default_name(suffix), "PNG Image (*.png)")
+            if path:
+                export_img.save(path, "PNG")
+                self._status_left.setText(f"Exported: {os.path.basename(path)}")
+
+    def _export_ui_clean_png(self):
+        if not self.current_entry or not HAS_PIL:
+            return
+        try:
+            obj = json.loads(self.current_entry.data.decode("utf-8", errors="replace"))
+        except (json.JSONDecodeError, ValueError):
+            return
+        root = _cs_get_root(obj)
+        if not isinstance(root, dict):
+            return
+        bx1, by1, bx2, by2 = _cs_bounding_box(root, show_hidden=False)
+        pad = 1
+        w = max(int(bx2 - bx1) + pad * 2, 50)
+        h = max(int(by2 - by1) + pad * 2, 50)
+        off_x = (-bx1 if bx1 < 0 else 0) + pad
+        off_y = (-by1 if by1 < 0 else 0) + pad
+        canvas = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+        saved = {}
+        for attr in ('_draw_images_cb', '_draw_text_cb', '_draw_outlines_cb', '_show_hidden_cb'):
+            cb = getattr(self, attr, None)
+            if cb:
+                saved[attr] = cb.isChecked()
+                cb.blockSignals(True)
+        self._draw_images_cb.setChecked(True)
+        self._draw_text_cb.setChecked(True)
+        self._draw_outlines_cb.setChecked(False)
+        if hasattr(self, '_show_hidden_cb'):
+            self._show_hidden_cb.setChecked(False)
+        self._cs_render_node(canvas, root, off_x, off_y, show_hidden=False)
+        path, _ = QFileDialog.getSaveFileName(self, "Export Clean Image PNG", self._export_default_name("_clean"), "PNG Image (*.png)")
+        if path:
+            canvas.save(path, "PNG")
+            self._status_left.setText(f"Exported: {os.path.basename(path)}")
+        for attr, val in saved.items():
+            cb = getattr(self, attr)
+            cb.setChecked(val)
+            cb.blockSignals(False)
+
+    def _export_anim_mp4(self, true_size=False):
+        if not hasattr(self, '_anim_data') or not HAS_PIL:
+            return
+        if hasattr(self, '_anim_timer') and self._anim_timer.isActive():
+            self._anim_timer.stop()
+            self._anim_play_btn.setText("Play")
+            self._anim_playing = False
+        mov_idx = getattr(self, '_anim_movement_idx', 0)
+        movs = self._anim_data.get('mov_data', [])
+        if mov_idx >= len(movs):
+            return
+        mov = movs[mov_idx]
+        dr = mov.get('dr', 1)
+        mov_name = mov.get('name', 'anim')
+
+        if true_size:
+            tex_data = getattr(self, '_anim_texture_data', []) or []
+            max_w = max((int(td.get('width', 64)) for td in tex_data), default=128)
+            max_h = max((int(td.get('height', 64)) for td in tex_data), default=128)
+            cw = max_w * 4
+            ch = max_h * 4
+            cw = min(cw, 1920)
+            ch = min(ch, 1080)
+            cw += cw % 2
+            ch += ch % 2
+            suffix = f"_{mov_name}_true"
+        else:
+            cw, ch = 960, 640
+            suffix = f"_{mov_name}"
+
+        path, _ = QFileDialog.getSaveFileName(self, "Export Animation MP4", self._export_default_name(suffix, "mp4"), "MP4 Video (*.mp4)")
+        if not path:
+            return
+
+        def frame_gen(progress):
+            bg = Image.new("RGBA", (cw, ch), (30, 30, 30, 255))
+            anim_single = {'mov_data': [mov]}
+            for f in range(dr):
+                frame_img = _render_anim_frame(anim_single, self._anim_armature,
+                                                self._anim_sprites, f,
+                                                canvas_size=(cw, ch),
+                                                texture_data=getattr(self, '_anim_texture_data', None))
+                canvas = bg.copy()
+                canvas.alpha_composite(frame_img, (0, 0))
+                progress.setValue(f)
+                if progress.wasCanceled():
+                    return
+                yield canvas.convert("RGB")
+        self._export_mp4_piped(path, dr, cw, ch, frame_gen)
+
+    def _export_scene_mp4(self, clean=False):
+        if not getattr(self, '_scene_obj', None) or not HAS_PIL:
+            return
+        was_playing = hasattr(self, '_scene_anim_timer') and self._scene_anim_timer.isActive()
+        if was_playing:
+            self._scene_anim_timer.stop()
+            self._scene_play_btn.setText("Play")
+        max_dr = 1
+        for ctrl in self._scene_anim_controls:
+            mode = ctrl['mode_combo'].currentIndex()
+            if mode == 0:
+                continue
+            mov_idx = ctrl['mov_combo'].currentIndex()
+            movs = ctrl['anim_data'].get('mov_data', [])
+            if mov_idx < len(movs):
+                max_dr = max(max_dr, movs[mov_idx].get('dr', 1))
+        suffix = "_scene_clean" if clean else "_scene"
+        path, _ = QFileDialog.getSaveFileName(self, "Export Scene MP4", self._export_default_name(suffix, "mp4"), "MP4 Video (*.mp4)")
+        if not path:
+            return
+
+        saved_toggles = {}
+        if clean:
+            for attr in ('_draw_images_cb', '_draw_text_cb', '_draw_outlines_cb', '_show_hidden_cb'):
+                cb = getattr(self, attr, None)
+                if cb:
+                    saved_toggles[attr] = cb.isChecked()
+                    cb.blockSignals(True)
+            self._draw_images_cb.setChecked(True)
+            self._draw_text_cb.setChecked(True)
+            self._draw_outlines_cb.setChecked(False)
+            self._show_hidden_cb.setChecked(False)
+
+        def frame_gen(progress):
+            for f in range(max_dr):
+                for ctrl in self._scene_anim_controls:
+                    mode = ctrl['mode_combo'].currentIndex()
+                    if mode in (2, 3):
+                        ctrl['frame'] = f % ctrl['anim_data'].get('mov_data', [{}])[ctrl['mov_combo'].currentIndex()].get('dr', max_dr)
+                    elif mode == 1:
+                        mi = ctrl['mov_combo'].currentIndex()
+                        ms = ctrl['anim_data'].get('mov_data', [])
+                        if mi < len(ms):
+                            ctrl['frame'] = ms[mi].get('dr', 1) - 1
+                self._render_scene_with_anims()
+                progress.setValue(f)
+                if progress.wasCanceled():
+                    return
+                if self._current_pil_image:
+                    yield self._current_pil_image.convert("RGB")
+        self._export_mp4_piped(path, max_dr, 960, 640, frame_gen)
+
+        if clean:
+            for attr, val in saved_toggles.items():
+                cb = getattr(self, attr)
+                cb.setChecked(val)
+                cb.blockSignals(False)
+            self._render_scene_with_anims()
+
+    def _export_mp4_piped(self, path, total_frames, w, h, frame_generator):
+        """Export MP4 by piping raw frames to ffmpeg stdin."""
+        import subprocess
+        from PyQt6.QtWidgets import QProgressDialog
+
+        progress = QProgressDialog("Exporting video...", "Cancel", 0, total_frames, self)
+        progress.setWindowTitle("Export MP4")
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+
+        import tempfile
+        err_file = tempfile.NamedTemporaryFile(suffix=".log", delete=False, mode='w')
+        err_path = err_file.name
+        err_file.close()
+
+        proc = subprocess.Popen([
+            "ffmpeg", "-y",
+            "-f", "rawvideo", "-pix_fmt", "rgb24",
+            "-s", f"{w}x{h}", "-r", "60",
+            "-i", "pipe:",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-crf", "18", "-preset", "fast",
+            path
+        ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+           stderr=open(err_path, 'w'))
+
+        try:
+            for frame in frame_generator(progress):
+                if progress.wasCanceled():
+                    proc.kill()
+                    break
+                proc.stdin.write(frame.tobytes())
+                QApplication.processEvents()
+            proc.stdin.close()
+            progress.setLabelText("Encoding video...")
+            progress.setValue(total_frames)
+            QApplication.processEvents()
+            while proc.poll() is None:
+                QApplication.processEvents()
+                import time
+                time.sleep(0.05)
+            if proc.returncode == 0 and not progress.wasCanceled():
+                size = os.path.getsize(path) if os.path.exists(path) else 0
+                self._status_left.setText(f"Exported: {os.path.basename(path)} ({_format_size(size)})")
+            elif progress.wasCanceled():
+                self._status_left.setText("Export canceled")
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+            else:
+                try:
+                    err = open(err_path, 'r').read()[-300:]
+                except Exception:
+                    err = "Unknown error"
+                QMessageBox.critical(self, "Export Error", f"ffmpeg error:\n{err}")
+        except Exception as e:
+            proc.kill()
+            QMessageBox.critical(self, "Export Error", str(e))
+        finally:
+            progress.close()
+            try:
+                os.unlink(err_path)
+            except OSError:
+                pass
+
     def _export_entry(self):
         if self.current_entry is None:
             return
