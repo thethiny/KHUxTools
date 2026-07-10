@@ -203,7 +203,7 @@ class KHUxBGADContainer(KHUxFile):
                                 encryption_key=key)
                 entry = bgad.read_entry()
                 entries.append(entry)
-                if progress_callback and len(entries) % 100 == 0:
+                if progress_callback and len(entries) % 50 == 0:
                     pos = self.file_handle.tell()
                     progress_callback(len(entries), pos, file_size)
             except (IOError, struct.error, ValueError):

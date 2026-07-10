@@ -191,82 +191,198 @@ def _decode_lwf_tex_name(name: str) -> str:
     return name
 
 
+_LWF_ITEM_ARRAYS = [
+    "stringBytes", "animationBytes", "translate", "matrix", "color",
+    "alphaTransform", "colorTransform", "objectData", "texture",
+    "textureFragment", "bitmap", "bitmapEx", "font", "textProperty",
+    "text", "particleData", "particle", "programObject", "graphicObject",
+    "graphic", "animation", "buttonCondition", "button", "label",
+    "instanceName", "eventData", "place", "controlMoveM", "controlMoveC",
+    "controlMoveMC", "control", "frame", "movieClipEvent", "movie",
+    "movieLinkage", "stringData",
+]
+
+_LWF_CT_MOVE_M, _LWF_CT_MOVE_C, _LWF_CT_MOVE_MC = 2, 3, 4
+_LWF_OT_GRAPHIC, _LWF_OT_MOVIE, _LWF_OT_BITMAP = 1, 2, 3
+
+
 def _parse_lwf_data(data: bytes) -> dict:
-    """Parse LWF binary and extract metadata, string table, and texture references."""
+    """Parse LWF binary using the GREE spec. Returns full parsed structure."""
     import struct as _st
     info = {'strings': [], 'textures': [], 'texture_resolved': {}, 'counts': {}}
-
-    if len(data) < 16:
+    if len(data) < 324 or data[:4] != b"LWF\x00":
         return info
 
-    version = _st.unpack_from('<I', data, 4)[0]
-    info['version'] = version
-    info['version_str'] = f"{(version >> 16) & 0xFF}.{(version >> 8) & 0xFF}.{version & 0xFF}"
-    info['data_size'] = _st.unpack_from('<I', data, 8)[0]
-    info['total_size'] = _st.unpack_from('<I', data, 12)[0]
+    info['version'] = data[4]
+    info['version_str'] = f"{data[4]}.{data[5]}.{data[6]}"
+    info['width'] = _st.unpack_from('<i', data, 8)[0]
+    info['height'] = _st.unpack_from('<i', data, 12)[0]
+    info['frameRate'] = _st.unpack_from('<i', data, 16)[0]
+    info['rootMovieId'] = _st.unpack_from('<i', data, 20)[0]
+    info['nameStringId'] = _st.unpack_from('<i', data, 24)[0]
 
-    if len(data) < 0x20:
-        return info
+    items = {}
+    off = 32
+    for name in _LWF_ITEM_ARRAYS:
+        if off + 8 > len(data):
+            break
+        items[name] = _st.unpack_from('<II', data, off)
+        off += 8
+    info['_items'] = items
 
-    info['name_id'] = _st.unpack_from('<I', data, 0x10)[0]
-    info['string_byte_length'] = _st.unpack_from('<I', data, 0x14)[0]
-    info['animation_byte_length'] = _st.unpack_from('<I', data, 0x18)[0]
+    def _rs(name, fmt, fields):
+        sec = items.get(name, (0, 0))
+        if sec[1] == 0:
+            return []
+        esz = _st.calcsize(fmt)
+        return [dict(zip(fields, _st.unpack_from(fmt, data, sec[0] + i * esz)))
+                for i in range(sec[1]) if sec[0] + i * esz + esz <= len(data)]
 
-    count_fields = [
-        (0x1C, 'translate'), (0x24, 'matrix'), (0x2C, 'color'),
-        (0x44, 'object'), (0x4C, 'texture'), (0x54, 'textureFragment'),
-        (0x5C, 'bitmap'), (0x64, 'bitmapEx'), (0x6C, 'font'),
-        (0x8C, 'graphicObject'), (0x9C, 'movieClip'), (0xAC, 'action'),
-        (0xB4, 'button'), (0xBC, 'label'), (0xC4, 'instanceName'),
-        (0xCC, 'event'), (0xF4, 'frame'), (0xFC, 'movie'),
-        (0x104, 'movieLinkage'), (0x10C, 'string'),
-    ]
+    sb = items.get('stringBytes', (0, 0))
+    sr = data[sb[0]:sb[0] + sb[1]] if sb[1] > 0 else b""
+    sd = items.get('stringData', (0, 0))
+    strings = []
+    for i in range(sd[1]):
+        so = _st.unpack_from('<I', data, sd[0] + i * 4)[0]
+        end = sr.find(0, so) if so < len(sr) else so
+        if end < 0:
+            end = len(sr)
+        try:
+            strings.append(sr[so:end].decode('utf-8'))
+        except (UnicodeDecodeError, ValueError):
+            strings.append('')
+    info['strings'] = strings
 
-    for offset, name in count_fields:
-        if offset + 4 <= len(data):
-            info['counts'][name] = _st.unpack_from('<I', data, offset)[0]
+    info['_translates'] = _rs('translate', '<ff', ['x', 'y'])
+    info['_matrices'] = _rs('matrix', '<ffffff', ['sx', 'sy', 'sk0', 'sk1', 'tx', 'ty'])
+    info['_objects'] = _rs('objectData', '<II', ['type', 'id'])
+    info['_textures'] = _rs('texture', '<IIiif', ['stringId', 'format', 'w', 'h', 'scale'])
+    info['_fragments'] = _rs('textureFragment', '<IIiiiiiii', ['stringId', 'texId', 'rotated', 'x', 'y', 'u', 'v', 'w', 'h'])
+    info['_bitmaps'] = _rs('bitmap', '<II', ['matId', 'fragId'])
+    info['_gfxObjects'] = _rs('graphicObject', '<II', ['type', 'id'])
+    info['_graphics'] = _rs('graphic', '<II', ['objOff', 'objs'])
+    info['_places'] = _rs('place', '<iiii', ['depth', 'objId', 'instId', 'matId'])
+    info['_ctrlMs'] = _rs('controlMoveM', '<II', ['placeId', 'matId'])
+    info['_ctrlCs'] = _rs('controlMoveC', '<II', ['placeId', 'ctId'])
+    info['_ctrlMCs'] = _rs('controlMoveMC', '<III', ['placeId', 'matId', 'ctId'])
+    info['_controls'] = _rs('control', '<II', ['type', 'id'])
+    info['_frames'] = _rs('frame', '<II', ['ctrlOff', 'ctrls'])
+    info['_movies'] = _rs('movie', '<iIIIIII', ['depth', 'labOff', 'labs', 'frmOff', 'frms', 'ceOff', 'ces'])
+    info['_linkages'] = _rs('movieLinkage', '<II', ['stringId', 'movieId'])
 
-    # GREE LWF header: 324 bytes for all versions, 340 for v0x141211+
-    header_size = 340 if version >= 0x141211 else 324
-
-    string_byte_len = info['string_byte_length']
-    if string_byte_len > 0 and header_size + string_byte_len <= len(data):
-        string_data = data[header_size:header_size + string_byte_len]
-        strings = []
-        for p in string_data.split(b'\x00'):
-            if p:
-                try:
-                    s = p.decode('utf-8')
-                    if s and any(c.isprintable() for c in s):
-                        strings.append(s)
-                except (UnicodeDecodeError, ValueError):
-                    pass
-        info['strings'] = strings
-    else:
-        strings = []
-        current = bytearray()
-        for b in data[16:]:
-            if 32 <= b < 127:
-                current.append(b)
-            else:
-                if b == 0 and len(current) >= 3:
-                    strings.append(current.decode('ascii'))
-                current = bytearray()
-        info['strings'] = strings
+    for name, (_, count) in items.items():
+        if count > 0 and name not in ('stringBytes', 'animationBytes', 'stringData'):
+            info['counts'][name] = count
 
     img_exts = ('.png', '.btf', '.jpg', '.pvr', '.webp')
     texture_set = set()
-    for s in info['strings']:
-        if any(s.lower().endswith(ext) for ext in img_exts):
-            texture_set.add(s)
+    for t in info['_textures']:
+        sname = strings[t['stringId']] if t['stringId'] < len(strings) else ''
+        if sname:
+            texture_set.add(sname)
     info['textures'] = sorted(texture_set)
-
-    resolved = {}
-    for t in info['textures']:
-        resolved[t] = _decode_lwf_tex_name(t)
-    info['texture_resolved'] = resolved
+    info['texture_resolved'] = {t: _decode_lwf_tex_name(t) for t in info['textures']}
 
     return info
+
+
+def _lwf_get_mat(lwf, mid):
+    if mid < 0:
+        i = mid & 0x7FFFFFFF
+        m = lwf['_matrices'][i] if i < len(lwf['_matrices']) else None
+        return (m['sx'], m['sy'], m['sk0'], m['sk1'], m['tx'], m['ty']) if m else (1, 0, 0, 1, 0, 0)
+    t = lwf['_translates'][mid] if mid < len(lwf['_translates']) else None
+    return (1, 0, 0, 1, t['x'], t['y']) if t else (1, 0, 0, 1, 0, 0)
+
+
+def _lwf_mat_mul(a, b):
+    return (a[0]*b[0]+a[2]*b[1], a[1]*b[0]+a[3]*b[1],
+            a[0]*b[2]+a[2]*b[3], a[1]*b[2]+a[3]*b[3],
+            a[0]*b[4]+a[2]*b[5]+a[4], a[1]*b[4]+a[3]*b[5]+a[5])
+
+
+def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx, cy, depth=0):
+    """Recursively render an LWF movie frame onto canvas."""
+    import math as _math
+    if movie_id >= len(lwf['_movies']) or depth > 20:
+        return
+    movie = lwf['_movies'][movie_id]
+    fi = movie['frmOff'] + min(frame_idx, max(0, movie['frms'] - 1))
+    if fi >= len(lwf['_frames']):
+        return
+    frame = lwf['_frames'][fi]
+    rlist = []
+    for ci in range(frame['ctrlOff'], frame['ctrlOff'] + frame['ctrls']):
+        if ci >= len(lwf['_controls']):
+            break
+        ct, cid = lwf['_controls'][ci]['type'], lwf['_controls'][ci]['id']
+        pid = matid = None
+        if ct == _LWF_CT_MOVE_M and cid < len(lwf['_ctrlMs']):
+            pid, matid = lwf['_ctrlMs'][cid]['placeId'], lwf['_ctrlMs'][cid]['matId']
+        elif ct == _LWF_CT_MOVE_C and cid < len(lwf['_ctrlCs']):
+            pid = lwf['_ctrlCs'][cid]['placeId']
+        elif ct == _LWF_CT_MOVE_MC and cid < len(lwf['_ctrlMCs']):
+            pid, matid = lwf['_ctrlMCs'][cid]['placeId'], lwf['_ctrlMCs'][cid]['matId']
+        if pid is None or pid >= len(lwf['_places']):
+            continue
+        place = lwf['_places'][pid]
+        mid = matid if matid is not None else place['matId']
+        wm = _lwf_mat_mul(parent_mat, _lwf_get_mat(lwf, mid))
+        oid = place['objId'] & 0x7FFFFFFF if place['objId'] < 0 else place['objId']
+        if oid >= len(lwf['_objects']):
+            continue
+        obj = lwf['_objects'][oid]
+        if obj['type'] == _LWF_OT_BITMAP:
+            b = lwf['_bitmaps'][obj['id']] if obj['id'] < len(lwf['_bitmaps']) else None
+            if b:
+                fm = _lwf_mat_mul(wm, _lwf_get_mat(lwf, b['matId']))
+                f = lwf['_fragments'][b['fragId']] if b['fragId'] < len(lwf['_fragments']) else None
+                if f:
+                    t = lwf['_textures'][f['texId']] if f['texId'] < len(lwf['_textures']) else None
+                    if t:
+                        sn = lwf['strings'][t['stringId']] if t['stringId'] < len(lwf['strings']) else ''
+                        rlist.append((place['depth'], sn, f, fm))
+        elif obj['type'] == _LWF_OT_GRAPHIC:
+            g = lwf['_graphics'][obj['id']] if obj['id'] < len(lwf['_graphics']) else None
+            if g:
+                for gi in range(g['objOff'], g['objOff'] + g['objs']):
+                    go = lwf['_gfxObjects'][gi] if gi < len(lwf['_gfxObjects']) else None
+                    if go and go['type'] == _LWF_OT_BITMAP:
+                        b = lwf['_bitmaps'][go['id']] if go['id'] < len(lwf['_bitmaps']) else None
+                        if b:
+                            fm = _lwf_mat_mul(wm, _lwf_get_mat(lwf, b['matId']))
+                            f = lwf['_fragments'][b['fragId']] if b['fragId'] < len(lwf['_fragments']) else None
+                            if f:
+                                t = lwf['_textures'][f['texId']] if f['texId'] < len(lwf['_textures']) else None
+                                if t:
+                                    sn = lwf['strings'][t['stringId']] if t['stringId'] < len(lwf['strings']) else ''
+                                    rlist.append((place['depth'], sn, f, fm))
+        elif obj['type'] == _LWF_OT_MOVIE:
+            _render_lwf_movie(lwf, obj['id'], frame_idx, tex_imgs, wm, canvas, cx, cy, depth + 1)
+    rlist.sort(key=lambda x: x[0])
+    for _, sn, frag, mat in rlist:
+        dec = _decode_lwf_tex_name(sn)
+        img = tex_imgs.get(dec) or tex_imgs.get(sn) or tex_imgs.get(dec.rsplit('/', 1)[-1] if '/' in dec else dec)
+        if not img:
+            continue
+        u, v, w, h = frag['u'], frag['v'], frag['w'], frag['h']
+        sp = img.crop((u, v, u + w, v + h)) if w > 0 and h > 0 else img
+        sx = _math.sqrt(mat[0]**2 + mat[1]**2)
+        sy = _math.sqrt(mat[2]**2 + mat[3]**2)
+        nw, nh = max(1, int(sp.width * sx)), max(1, int(sp.height * sy))
+        if (nw, nh) != sp.size:
+            sp = sp.resize((nw, nh), Image.BILINEAR)
+        dx = cx + int(mat[4]) - nw // 2
+        dy = cy - int(mat[5]) - nh // 2
+        sx2, sy2 = 0, 0
+        if dx < 0:
+            sx2 = -dx; dx = 0
+        if dy < 0:
+            sy2 = -dy; dy = 0
+        cw2 = min(sp.width - sx2, canvas.width - dx)
+        ch2 = min(sp.height - sy2, canvas.height - dy)
+        if cw2 > 0 and ch2 > 0:
+            canvas.alpha_composite(sp.crop((sx2, sy2, sx2 + cw2, sy2 + ch2)), (dx, dy))
 
 
 def _detect_cocostudio(obj) -> bool:
@@ -941,22 +1057,31 @@ class FileLoaderWorker(QThread):
     def __init__(self, path: str, parent=None):
         super().__init__(parent)
         self._path = path
+        self._canceled = False
 
     def run(self):
         try:
-            self.progress.emit(f"Opening {os.path.basename(self._path)}...", 0, 0)
+            self.progress.emit(f"Opening {os.path.basename(self._path)}...", 0, 100)
             container = KHUxBGADContainer(self._path)
+            file_size = os.path.getsize(self._path)
 
-            def on_progress(count, pos, file_size):
-                pct = int(pos * 100 / file_size) if file_size > 0 else 0
-                self.progress.emit(f"Reading entries... {count} entries ({pct}%)", pos, file_size)
+            def on_progress(count, pos, fs):
+                if self._canceled:
+                    raise InterruptedError("Load canceled")
+                pos_mb = pos / (1024 * 1024)
+                fs_mb = fs / (1024 * 1024)
+                self.progress.emit(f"Reading entries... {count} entries  ({pos_mb:.0f}/{fs_mb:.0f} MB)", pos, fs)
 
-            self.progress.emit("Reading entries...", 0, 0)
+            self.progress.emit("Analyzing file...", 0, file_size)
             entries = container.iter_entries(progress_callback=on_progress)
-            self.progress.emit(f"Loaded {len(entries)} entries", len(entries), len(entries))
-            self.finished.emit(container, entries, self._path)
+            if not self._canceled:
+                self.progress.emit(f"Loaded {len(entries)} entries", len(entries), len(entries))
+                self.finished.emit(container, entries, self._path)
+        except InterruptedError:
+            pass
         except Exception as e:
-            self.error.emit(str(e))
+            if not self._canceled:
+                self.error.emit(str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -2415,34 +2540,45 @@ class KHUxExplorer(QMainWindow):
             self._anim_play_btn.setText("Play")
         else:
             self._anim_playing = True
+            start_frame = self._lwf_frame if getattr(self, '_lwf_info', None) else self._anim_frame
             self._anim_play_start = _time.perf_counter()
-            self._anim_play_start_frame = self._anim_frame
+            self._anim_play_start_frame = start_frame
             self._anim_play_btn.setText("Pause")
+            if not hasattr(self, '_anim_timer'):
+                self._anim_timer = QTimer(self)
+                self._anim_timer.timeout.connect(self._anim_tick)
             self._anim_timer.start(17)
 
     def _anim_tick(self):
         import time as _time
+        is_lwf = bool(getattr(self, '_lwf_info', None))
         elapsed = _time.perf_counter() - self._anim_play_start
+        fps = self._lwf_info.get('frameRate', 30) if is_lwf else 60
         sc = getattr(self, '_anim_sc', 1.0)
-        target_frame = self._anim_play_start_frame + int(elapsed * 60 * sc)
-        dr = self._anim_dr
+        target_frame = self._anim_play_start_frame + int(elapsed * fps * sc)
+        dr = (getattr(self, '_lwf_total_frames', 1) if is_lwf else getattr(self, '_anim_dr', 1)) or 1
         if target_frame >= dr:
-            if self._anim_loop:
-                target_frame = target_frame % dr
-                self._anim_play_start = _time.perf_counter()
-                self._anim_play_start_frame = target_frame
-            else:
-                target_frame = dr - 1
-                self._anim_playing = False
-                self._anim_timer.stop()
-                self._anim_play_btn.setText("Play")
-        self._anim_frame = target_frame
+            target_frame = target_frame % dr
+            self._anim_play_start = _time.perf_counter()
+            self._anim_play_start_frame = target_frame
         self._anim_slider.blockSignals(True)
-        self._anim_slider.setValue(self._anim_frame)
+        self._anim_slider.setValue(target_frame)
         self._anim_slider.blockSignals(False)
-        self._anim_render_current()
+        if is_lwf:
+            self._lwf_frame = target_frame
+            self._lwf_render_current()
+            self._anim_frame_label.setText(f"{target_frame}/{dr - 1}")
+        else:
+            self._anim_frame = target_frame
+            self._anim_render_current()
 
     def _anim_seek(self, value):
+        if getattr(self, '_lwf_info', None):
+            self._lwf_frame = value
+            self._lwf_render_current()
+            total = getattr(self, '_lwf_total_frames', 1)
+            self._anim_frame_label.setText(f"{value}/{total - 1}")
+            return
         self._anim_frame = value
         self._anim_render_current()
 
@@ -2487,11 +2623,36 @@ class KHUxExplorer(QMainWindow):
         if path:
             self._load_file(path)
 
+    def _cleanup_state(self):
+        """Stop all timers and clear state from the previous file."""
+        if hasattr(self, '_anim_timer') and self._anim_timer.isActive():
+            self._anim_timer.stop()
+        if hasattr(self, '_scene_anim_timer') and self._scene_anim_timer.isActive():
+            self._scene_anim_timer.stop()
+        self._anim_playing = False
+        self._anim_sprites = {}
+        self._anim_bg = None
+        self._lwf_info = None
+        self._lwf_textures = {}
+        self._lwf_frame = 0
+        self._scene_obj = None
+        self._plist_sprites = []
+        self._plist_atlas = None
+        self._plist_sprite_idx = -1
+        self._clear_scene_anims()
+        self._image_preview.clear_image()
+        self._audio_player.clear_audio()
+        self._preview_text.clear()
+        self._preview_hex.clear()
+        self._current_pil_image = None
+        self.current_entry = None
+
     def _load_file(self, path: str):
         if not os.path.exists(path):
             QMessageBox.critical(self, "Error", f"File not found:\n{path}")
             return
 
+        self._cleanup_state()
         self._status_left.setText(f"Loading {os.path.basename(path)}...")
 
         # Check if it's a standalone file (not a BGAD container)
@@ -2510,10 +2671,11 @@ class KHUxExplorer(QMainWindow):
             pass
 
         from PyQt6.QtWidgets import QProgressDialog
-        self._load_progress = QProgressDialog("Opening file...", None, 0, 100, self)
+        self._load_progress = QProgressDialog("Opening file...", "Cancel", 0, 100, self)
         self._load_progress.setWindowTitle("Loading")
         self._load_progress.setMinimumDuration(0)
         self._load_progress.setValue(0)
+        self._load_progress.canceled.connect(self._on_load_canceled)
         self._load_progress.show()
 
         self._loader = FileLoaderWorker(path)
@@ -2522,14 +2684,24 @@ class KHUxExplorer(QMainWindow):
         self._loader.finished.connect(self._on_load_finished)
         self._loader.start()
 
+    def _on_load_canceled(self):
+        if hasattr(self, '_loader') and self._loader:
+            self._loader._canceled = True
+        if hasattr(self, '_load_progress') and self._load_progress:
+            self._load_progress.close()
+            self._load_progress = None
+        self._status_left.setText("Load canceled")
+        self._loader = None
+
     def _on_load_progress(self, msg: str, current: int, total: int):
         if hasattr(self, '_load_progress') and self._load_progress:
             self._load_progress.setLabelText(msg)
             if total > 0:
-                self._load_progress.setMaximum(total)
-                self._load_progress.setValue(current)
+                self._load_progress.setMaximum(100)
+                self._load_progress.setValue(min(99, int(current * 100 / total)))
             else:
-                self._load_progress.setMaximum(0)
+                self._load_progress.setMaximum(100)
+                self._load_progress.setValue(0)
         self._status_left.setText(msg)
 
     def _on_load_error(self, msg: str):
@@ -2571,7 +2743,10 @@ class KHUxExplorer(QMainWindow):
                     pass
             return True
         real_table = [i for i, e in enumerate(entry_list) if not _is_stub(e)]
-        for e in entry_list:
+        for ei, e in enumerate(entry_list):
+            if ei % 500 == 0 and hasattr(self, '_load_progress') and self._load_progress:
+                self._load_progress.setValue(ei)
+                QApplication.processEvents()
             if e.name.lower().endswith(".ttf") and not _is_stub(e):
                 self.entry_formats[e.name] = "ttf"
             elif e.data and len(e.data) >= 4:
@@ -2617,7 +2792,8 @@ class KHUxExplorer(QMainWindow):
 
         if hasattr(self, '_load_progress') and self._load_progress:
             self._load_progress.setLabelText(f"Classifying {len(entries)} entries...")
-            self._load_progress.setMaximum(0)
+            self._load_progress.setMaximum(len(entries))
+            self._load_progress.setValue(0)
             QApplication.processEvents()
 
         fname = os.path.basename(path)
@@ -2625,7 +2801,9 @@ class KHUxExplorer(QMainWindow):
         self._file_label.setStyleSheet(f"color: {COLORS['fg_bright']};")
 
         if hasattr(self, '_load_progress') and self._load_progress:
-            self._load_progress.setLabelText(f"Building tree...")
+            self._load_progress.setLabelText(f"Building tree ({len(entries)} entries)...")
+            self._load_progress.setMaximum(100)
+            self._load_progress.setValue(50)
             QApplication.processEvents()
 
         self._populate_tree()
@@ -3303,7 +3481,16 @@ class KHUxExplorer(QMainWindow):
             self._zoom_out_btn.setEnabled(False)
         elif fmt == "lwf":
             self._show_lwf_preview(entry)
-            self._render_lwf_visual(entry)
+            if self._render_lwf_visual(entry):
+                total = getattr(self, '_lwf_total_frames', 1)
+                if total > 1:
+                    self._anim_play_btn.setVisible(True)
+                    self._anim_play_btn.setText("Play")
+                    self._anim_slider.setVisible(True)
+                    self._anim_slider.setRange(0, total - 1)
+                    self._anim_slider.setValue(0)
+                    self._anim_frame_label.setVisible(True)
+                    self._anim_frame_label.setText(f"0/{total - 1}")
             self._preview_stack.setCurrentIndex(0)
             self._preview_notebook.setCurrentIndex(0)
             self._zoom_in_btn.setEnabled(True)
@@ -3544,79 +3731,62 @@ class KHUxExplorer(QMainWindow):
         self._plist_grid_btn.setVisible(True)
         self._plist_next_btn.setVisible(idx < len(sprites) - 1)
 
+    def _load_lwf_textures(self, entry: BGADEntry, lwf_info: dict) -> dict:
+        """Load BTF textures referenced by an LWF, matching by directory prefix."""
+        tex_imgs = {}
+        if not HAS_BTF:
+            return tex_imgs
+        lwf_dir = entry.name.rsplit('/', 1)[0] + '/' if '/' in entry.name else ''
+        resolved = lwf_info.get('texture_resolved', {})
+        for tex_name in lwf_info.get('textures', []):
+            decoded = resolved.get(tex_name, tex_name)
+            basename = decoded.rsplit('/', 1)[-1] if '/' in decoded else decoded
+            for candidate in [tex_name, decoded, lwf_dir + basename, basename]:
+                e = self._find_entry(candidate)
+                if e and len(e.data) >= 4 and e.data[:4] == b'\x89BTF':
+                    try:
+                        tex_imgs[tex_name] = KHUxBTF.from_bytes(e.data).decode(use_canvas=True).convert('RGBA')
+                        tex_imgs[decoded] = tex_imgs[tex_name]
+                        tex_imgs[basename] = tex_imgs[tex_name]
+                    except Exception:
+                        pass
+                    break
+        return tex_imgs
+
     def _render_lwf_visual(self, entry: BGADEntry) -> bool:
-        """Render LWF referenced textures as a visual grid in the Preview tab."""
+        """Render LWF animation frame in the Preview tab."""
         if not HAS_PIL:
             return False
         info = _parse_lwf_data(entry.data)
-        tex_names = info.get('textures', [])
-        resolved = info.get('texture_resolved', {})
+        if not info.get('_movies'):
+            return False
 
-        images = []
-        if HAS_BTF:
-            for tn in tex_names:
-                decoded = resolved.get(tn, tn)
-                e = self._find_entry(tn) or self._find_entry(decoded)
-                if e and len(e.data) >= 4 and e.data[:4] == b'\x89BTF':
-                    try:
-                        images.append((decoded.rsplit('/', 1)[-1], KHUxBTF.from_bytes(e.data).decode(use_canvas=True)))
-                    except Exception:
-                        pass
+        tex_imgs = self._load_lwf_textures(entry, info)
+        self._lwf_info = info
+        self._lwf_textures = tex_imgs
+        self._lwf_frame = 0
 
-        if not images:
-            canvas = Image.new('RGBA', (500, 300), (30, 30, 30, 255))
-            draw = ImageDraw.Draw(canvas)
-            y = 20
-            draw.text((20, y), f"LWF v{info.get('version_str', '?')}", fill=(200, 200, 200))
-            y += 25
-            active = {k: v for k, v in info.get('counts', {}).items() if 0 < v < 100000}
-            if active:
-                draw.text((20, y), f"{active.get('texture', 0)} textures, {active.get('frame', 0)} frames, {active.get('movie', 0)} movies", fill=(150, 150, 150))
-                y += 25
-            if tex_names:
-                draw.text((20, y), "Referenced textures:", fill=(140, 180, 220))
-                y += 20
-                for tn in tex_names[:8]:
-                    decoded = resolved.get(tn, tn)
-                    draw.text((30, y), decoded, fill=(120, 160, 200))
-                    y += 18
-                if not self.entry_map or len(self.entry_map) <= 1:
-                    y += 10
-                    draw.text((20, y), "Textures not found (open inside BGAD container)", fill=(200, 150, 80))
-            else:
-                draw.text((20, y), "No texture references found in string table", fill=(200, 150, 80))
-            self._current_pil_image = canvas
-            self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas))
-            return True
+        root_movie = info['_movies'][info['rootMovieId']] if info['rootMovieId'] < len(info['_movies']) else None
+        if root_movie:
+            self._lwf_total_frames = root_movie['frms']
+        else:
+            self._lwf_total_frames = 1
 
-        padding, max_thumb, label_h = 8, 256, 18
-        thumbs = []
-        for name, img in images:
-            s = min(max_thumb / max(img.width, 1), max_thumb / max(img.height, 1), 1.0)
-            if s < 1.0:
-                img = img.resize((int(img.width * s), int(img.height * s)), Image.LANCZOS)
-            thumbs.append((name, img))
-
-        cols = min(4, len(thumbs))
-        cell_w = max(t.width for _, t in thumbs) + padding * 2
-        cell_h = max(t.height for _, t in thumbs) + padding * 2 + label_h
-        rows = (len(thumbs) + cols - 1) // cols
-        title_h = 28
-
-        canvas = Image.new('RGBA', (cols * cell_w + padding, rows * cell_h + padding + title_h), (30, 30, 30, 255))
-        draw = ImageDraw.Draw(canvas)
-        draw.text((padding, 6), f"LWF Textures ({len(thumbs)})", fill=(200, 200, 200))
-
-        for i, (name, img) in enumerate(thumbs):
-            cx = (i % cols) * cell_w + padding
-            cy = (i // cols) * cell_h + padding + title_h
-            draw.rectangle([cx, cy, cx + cell_w - 1, cy + cell_h - 1], fill=(45, 45, 48), outline=(80, 80, 80))
-            canvas.alpha_composite(img, (cx + (cell_w - img.width) // 2, cy + padding))
-            draw.text((cx + 4, cy + cell_h - label_h), name[:30], fill=(170, 170, 170))
-
-        self._current_pil_image = canvas
-        self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas))
+        self._lwf_render_current()
         return True
+
+    def _lwf_render_current(self):
+        info = getattr(self, '_lwf_info', None)
+        if not info:
+            return
+        w = max(info.get('width', 200), 50)
+        h = max(info.get('height', 200), 50)
+        canvas = Image.new('RGBA', (w, h), (30, 30, 30, 255))
+        _render_lwf_movie(info, info['rootMovieId'], self._lwf_frame,
+                          self._lwf_textures, (1, 0, 0, 1, 0, 0),
+                          canvas, w // 2, h // 2)
+        self._current_pil_image = canvas
+        self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas), keep_zoom=True)
 
     def _render_cocostudio_visual(self, entry: BGADEntry) -> bool:
         """Render a CocoStudio layout as a visual preview with textures or wireframe."""
