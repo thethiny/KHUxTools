@@ -1328,20 +1328,151 @@ class KHUxExplorer(QMainWindow):
         self._splitter.addWidget(center_widget)
 
         # --- RIGHT PANE: Properties + Hex ---
-        right_notebook = QTabWidget()
+        self._right_notebook = QTabWidget()
 
         # Properties tab
         self._props_text = PropertiesTextEdit()
-        right_notebook.addTab(self._props_text, "Properties")
+        self._right_notebook.addTab(self._props_text, "Properties")
 
         # Hex view tab
         self._hex_text = StyledTextEdit(wrap=False)
-        right_notebook.addTab(self._hex_text, "Hex View")
+        self._right_notebook.addTab(self._hex_text, "Hex View")
 
-        self._splitter.addWidget(right_notebook)
+        # Preview controls tab (layers + draw toggles for UI entries)
+        self._build_preview_controls_tab()
+
+        self._splitter.addWidget(self._right_notebook)
 
         # Set initial splitter proportions (20% / 50% / 30%)
         QTimer.singleShot(50, self._set_initial_splitter)
+
+    def _build_preview_controls_tab(self):
+        from PyQt6.QtWidgets import QCheckBox, QScrollArea
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+
+        # Draw toggles
+        toggles_label = QLabel("Draw Options")
+        toggles_label.setStyleSheet(f"font-weight: bold; color: {COLORS['fg_bright']};")
+        layout.addWidget(toggles_label)
+
+        self._draw_images_cb = QCheckBox("Draw Images")
+        self._draw_images_cb.setChecked(True)
+        self._draw_images_cb.toggled.connect(self._on_layer_changed)
+        layout.addWidget(self._draw_images_cb)
+
+        self._draw_text_cb = QCheckBox("Draw Text")
+        self._draw_text_cb.setChecked(True)
+        self._draw_text_cb.toggled.connect(self._on_layer_changed)
+        layout.addWidget(self._draw_text_cb)
+
+        self._draw_outlines_cb = QCheckBox("Draw Outlines")
+        self._draw_outlines_cb.setChecked(True)
+        self._draw_outlines_cb.toggled.connect(self._on_layer_changed)
+        layout.addWidget(self._draw_outlines_cb)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"color: {COLORS['border']};")
+        layout.addWidget(sep)
+
+        # Layers header
+        layers_label = QLabel("Layers")
+        layers_label.setStyleSheet(f"font-weight: bold; color: {COLORS['fg_bright']};")
+        layout.addWidget(layers_label)
+
+        # Scrollable layer list
+        self._layers_scroll = QScrollArea()
+        self._layers_scroll.setWidgetResizable(True)
+        self._layers_scroll.setStyleSheet(f"border: none; background-color: {COLORS['bg']};")
+        self._layers_widget = QWidget()
+        self._layers_layout = QVBoxLayout(self._layers_widget)
+        self._layers_layout.setContentsMargins(0, 0, 0, 0)
+        self._layers_layout.setSpacing(2)
+        self._layers_layout.addStretch()
+        self._layers_scroll.setWidget(self._layers_widget)
+        layout.addWidget(self._layers_scroll, 1)
+
+        self._layer_checkboxes: List[tuple] = []
+        self._preview_controls_tab_idx = self._right_notebook.addTab(container, "Preview")
+        self._right_notebook.setTabVisible(self._preview_controls_tab_idx, False)
+
+    def _populate_layer_list(self, node, depth=0):
+        """Build layer checkboxes from the widget tree."""
+        from PyQt6.QtWidgets import QCheckBox
+
+        # Clear existing
+        for cb, _ in self._layer_checkboxes:
+            cb.setParent(None)
+        self._layer_checkboxes.clear()
+
+        # Remove stretch
+        while self._layers_layout.count():
+            item = self._layers_layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+
+        widgets = []
+        self._collect_widgets(node, 0, widgets)
+
+        for depth, cn, nm, visible in widgets:
+            indent = "  " * depth
+            label = f"{indent}[{cn}] {nm}" if nm else f"{indent}[{cn}]"
+            cb = QCheckBox(label)
+            cb.setChecked(visible)
+            cb.setStyleSheet(f"color: {COLORS['fg']}; font: 9pt 'Consolas'; padding: 1px 0px;")
+            cb.toggled.connect(self._on_layer_changed)
+            self._layers_layout.addWidget(cb)
+            self._layer_checkboxes.append((cb, (cn, nm)))
+
+        self._layers_layout.addStretch()
+        self._update_layer_enabled_state()
+
+    def _collect_widgets(self, node, depth, result):
+        if not isinstance(node, dict):
+            return
+        opts = node.get('options', node)
+        cn = node.get('classname', '?')
+        nm = opts.get('name', node.get('name', ''))
+        visible = opts.get('visible', True)
+        result.append((depth, cn, nm, visible))
+        for child in node.get('children', []):
+            self._collect_widgets(child, depth + 1, result)
+
+    def _update_layer_enabled_state(self):
+        """Disable layer checkboxes when all relevant draw toggles are off."""
+        draw_images = self._draw_images_cb.isChecked()
+        draw_text = self._draw_text_cb.isChecked()
+        draw_outlines = self._draw_outlines_cb.isChecked()
+        any_draw = draw_images or draw_text or draw_outlines
+
+        for cb, (cn, nm) in self._layer_checkboxes:
+            if cn == "Label":
+                relevant = draw_text or draw_outlines
+            elif cn in ("ImageView", "Button"):
+                relevant = draw_images or draw_outlines
+            else:
+                relevant = any_draw
+            cb.setEnabled(relevant)
+
+    def _on_layer_changed(self, _checked=None):
+        self._update_layer_enabled_state()
+        if self.current_entry:
+            fmt = self.entry_formats.get(self.current_entry.name, "")
+            if fmt == "ui":
+                self._render_cocostudio_visual(self.current_entry)
+
+    def _get_layer_visibility(self):
+        """Return dict mapping (classname, name) to checkbox state."""
+        vis = {}
+        idx = 0
+        for cb, (cn, nm) in self._layer_checkboxes:
+            vis[idx] = cb.isChecked() and cb.isEnabled()
+            idx += 1
+        return vis
 
     def _set_initial_splitter(self):
         w = self.width()
@@ -2147,6 +2278,7 @@ class KHUxExplorer(QMainWindow):
         self._plist_prev_btn.setVisible(False)
         self._plist_grid_btn.setVisible(False)
         self._plist_next_btn.setVisible(False)
+        self._right_notebook.setTabVisible(self._preview_controls_tab_idx, False)
         self._zoom_level = 1.0
         self._zoom_label.setText("100%")
 
@@ -2183,6 +2315,15 @@ class KHUxExplorer(QMainWindow):
             self._zoom_out_btn.setEnabled(True)
         elif fmt == "ui":
             self._show_text_preview(entry)
+            try:
+                obj = json.loads(entry.data.decode("utf-8", errors="replace"))
+                root = _cs_get_root(obj)
+                if isinstance(root, dict):
+                    self._populate_layer_list(root)
+            except Exception:
+                pass
+            self._right_notebook.setTabVisible(self._preview_controls_tab_idx, True)
+            self._right_notebook.setCurrentIndex(self._preview_controls_tab_idx)
             self._render_cocostudio_visual(entry)
             self._preview_stack.setCurrentIndex(0)
             self._preview_notebook.setCurrentIndex(0)
@@ -2462,7 +2603,7 @@ class KHUxExplorer(QMainWindow):
         if not isinstance(root, dict):
             return False
 
-        show_hidden = getattr(self, '_show_hidden_cb', None) and self._show_hidden_cb.isChecked()
+        show_hidden = bool(getattr(self, '_show_hidden_cb', None) and self._show_hidden_cb.isChecked())
         bx1, by1, bx2, by2 = _cs_bounding_box(root, show_hidden=show_hidden)
         pad = 1
         w = max(int(bx2 - bx1) + pad * 2, 50)
@@ -2471,11 +2612,7 @@ class KHUxExplorer(QMainWindow):
         off_y = (-by1 if by1 < 0 else 0) + pad
 
         canvas = Image.new('RGBA', (w, h), (40, 40, 42, 255))
-        has_tex = self._cs_render_node(canvas, root, off_x, off_y, show_hidden)
-
-        if not has_tex:
-            draw = ImageDraw.Draw(canvas)
-            self._cs_wireframe(draw, canvas.height, root, 0, 0)
+        self._cs_render_node(canvas, root, off_x, off_y, show_hidden)
 
         self._current_pil_image = canvas
         self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas))
@@ -2541,13 +2678,34 @@ class KHUxExplorer(QMainWindow):
         self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas))
         return True
 
-    def _cs_render_node(self, canvas, node, px, py, show_hidden=False) -> bool:
+    def _cs_render_node(self, canvas, node, px, py, show_hidden=False, _counter=None) -> bool:
         """Recursively render CocoStudio widgets. px/py = parent's anchor point in world coords."""
         if not isinstance(node, dict) or not HAS_BTF:
             return False
+        if _counter is None:
+            _counter = [0]
+        widget_idx = _counter[0]
+        _counter[0] += 1
+
         opts_vis = node.get('options', node)
         if not show_hidden and not opts_vis.get('visible', True):
+            for child in node.get('children', []):
+                self._cs_render_node(canvas, child, px, py, show_hidden, _counter)
             return False
+
+        layer_vis = self._get_layer_visibility()
+        if layer_vis and widget_idx in layer_vis and not layer_vis[widget_idx]:
+            x, y, w, h, ax, ay, *_ = _cs_widget_props(node)
+            anchor_wx = px + x
+            anchor_wy = py + y
+            for child in node.get('children', []):
+                self._cs_render_node(canvas, child, anchor_wx, anchor_wy, show_hidden, _counter)
+            return False
+
+        draw_images = self._draw_images_cb.isChecked() if hasattr(self, '_draw_images_cb') else True
+        draw_text = self._draw_text_cb.isChecked() if hasattr(self, '_draw_text_cb') else True
+        draw_outlines = self._draw_outlines_cb.isChecked() if hasattr(self, '_draw_outlines_cb') else True
+
         x, y, w, h, ax, ay, tex_path, cn, nm, s9, s9x, s9y, s9w, s9h = _cs_widget_props(node)
 
         anchor_wx = px + x
@@ -2558,7 +2716,7 @@ class KHUxExplorer(QMainWindow):
         pil_y = int(canvas.height - bl_y - h)
 
         rendered = False
-        if tex_path:
+        if tex_path and draw_images:
             e = self._find_entry(tex_path)
             if e and len(e.data) >= 4 and e.data[:4] == b'\x89BTF':
                 try:
@@ -2583,7 +2741,7 @@ class KHUxExplorer(QMainWindow):
                 except Exception:
                     pass
 
-        if cn == "Label" and w > 0 and h > 0:
+        if cn == "Label" and w > 0 and h > 0 and draw_text:
             opts = node.get("options", node)
             text = opts.get("text", "")
             if text:
@@ -2614,7 +2772,7 @@ class KHUxExplorer(QMainWindow):
                     draw.text((tx, ty), text, fill=(cr, cg, cb), font=font)
                 rendered = True
 
-        if not rendered and w > 10 and h > 10:
+        if w > 10 and h > 10 and draw_outlines:
             draw = ImageDraw.Draw(canvas)
             rx = max(0, pil_x)
             ry = max(0, pil_y)
@@ -2622,11 +2780,12 @@ class KHUxExplorer(QMainWindow):
             rh = min(h, canvas.height - ry)
             if rw > 0 and rh > 0:
                 draw.rectangle([rx, ry, rx + rw, ry + rh], outline=(90, 140, 200))
-                label = f"{cn}: {nm}"[:35] if nm else str(cn)
-                draw.text((rx + 3, ry + 2), label, fill=(140, 180, 220))
+                if not rendered:
+                    label = f"{cn}: {nm}"[:35] if nm else str(cn)
+                    draw.text((rx + 3, ry + 2), label, fill=(140, 180, 220))
 
         for child in node.get('children', []):
-            if self._cs_render_node(canvas, child, anchor_wx, anchor_wy, show_hidden):
+            if self._cs_render_node(canvas, child, anchor_wx, anchor_wy, show_hidden, _counter):
                 rendered = True
         return rendered
 
