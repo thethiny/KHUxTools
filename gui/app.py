@@ -335,8 +335,14 @@ def _cs_widget_props(node):
 
     cn = node.get('classname', '?')
     nm = opts.get('name', node.get('name', ''))
+    rotation = float(opts.get('rotation', 0))
+    scale_x = float(opts.get('scaleX', 1))
+    scale_y = float(opts.get('scaleY', 1))
+    flip_x = bool(opts.get('flipX', False))
+    flip_y = bool(opts.get('flipY', False))
+    opacity = int(opts.get('opacity', 255))
 
-    return x, y, w, h, ax, ay, tex_path, cn, nm, s9, s9_x, s9_y, s9_w, s9_h
+    return x, y, w, h, ax, ay, tex_path, cn, nm, s9, s9_x, s9_y, s9_w, s9_h, rotation, scale_x, scale_y, flip_x, flip_y, opacity
 
 
 def _cs_bounding_box(node, px=0, py=0, show_hidden=False):
@@ -364,21 +370,34 @@ def _cs_bounding_box(node, px=0, py=0, show_hidden=False):
     return (min_x, min_y, max_x, max_y)
 
 
-def _parse_plist_frames(plist_data: str) -> list:
-    """Parse a CocoStudio plist atlas and return list of (name, x, y, w, h)."""
+def _parse_plist(plist_data: str):
+    """Parse a CocoStudio plist atlas. Returns (frames_list, texture_filename).
+    frames_list: [(name, x, y, w, h, orig_w, orig_h, off_x, off_y), ...]
+    texture_filename: str from metadata (e.g. 'LoadingAnimation0.png')
+    """
     import xml.etree.ElementTree as _ET
     root = _ET.fromstring(plist_data)
     top_dict = root.find("dict")
     if top_dict is None:
-        return []
+        return [], ""
     top_children = list(top_dict)
+
     frames_dict = None
+    tex_filename = ""
     for i, child in enumerate(top_children):
-        if child.tag == "key" and child.text == "frames" and i + 1 < len(top_children):
+        if child.tag != "key" or i + 1 >= len(top_children):
+            continue
+        if child.text == "frames":
             frames_dict = top_children[i + 1]
-            break
+        elif child.text == "metadata":
+            meta = top_children[i + 1]
+            mc = list(meta)
+            for j in range(0, len(mc), 2):
+                if j + 1 < len(mc) and mc[j].tag == "key" and mc[j].text == "textureFileName":
+                    tex_filename = mc[j + 1].text or ""
+
     if frames_dict is None:
-        return []
+        return [], tex_filename
     children = list(frames_dict)
     result = []
     for i in range(0, len(children), 2):
@@ -396,8 +415,17 @@ def _parse_plist_frames(plist_data: str) -> list:
                 elif v.tag == "real":
                     props[fc[j].text] = float(v.text)
         result.append((fname, props.get("x", 0), props.get("y", 0),
-                        props.get("width", 0), props.get("height", 0)))
-    return result
+                        props.get("width", 0), props.get("height", 0),
+                        props.get("originalWidth", props.get("width", 0)),
+                        props.get("originalHeight", props.get("height", 0)),
+                        props.get("offsetX", 0), props.get("offsetY", 0)))
+    return result, tex_filename
+
+
+def _parse_plist_frames(plist_data: str) -> list:
+    """Backwards-compatible wrapper. Returns list of (name, x, y, w, h)."""
+    frames, _ = _parse_plist(plist_data)
+    return [(f[0], f[1], f[2], f[3], f[4]) for f in frames]
 
 
 def _parse_exportjson(obj):
@@ -414,22 +442,59 @@ def _detect_exportjson(obj) -> bool:
     return 'armature_data' in obj and 'animation_data' in obj and 'config_file_path' in obj
 
 
+def _apply_tween_easing(t, twe):
+    """Apply CocoStudio tween easing to interpolation factor t (0-1)."""
+    import math as _m
+    if twe == 0 or t <= 0 or t >= 1:
+        return t
+    if twe == 1:
+        return 1 - _m.cos(t * _m.pi / 2)
+    if twe == 2:
+        return _m.sin(t * _m.pi / 2)
+    if twe == 3:
+        return -(_m.cos(_m.pi * t) - 1) / 2
+    if twe == 4:
+        return t * t
+    if twe == 5:
+        return t * (2 - t)
+    if twe == 6:
+        return 2 * t * t if t < 0.5 else 1 - (-2 * t + 2) ** 2 / 2
+    if twe == 7:
+        return t * t * t
+    if twe == 8:
+        return 1 - (1 - t) ** 3
+    if twe == 9:
+        return 4 * t ** 3 if t < 0.5 else 1 - (-2 * t + 2) ** 3 / 2
+    if twe == 10:
+        return t ** 4
+    if twe == 11:
+        return 1 - (1 - t) ** 4
+    if twe == 12:
+        return 8 * t ** 4 if t < 0.5 else 1 - (-2 * t + 2) ** 4 / 2
+    return t
+
+
 def _interp_bone_keyframe(mov_bone, frame_idx):
-    """Interpolate a bone's keyframe data at a given frame. Returns (x, y, cX, cY, dI, alpha, r, g, b) or None."""
+    """Interpolate a bone's keyframe data at a given frame."""
     frames = mov_bone.get('frame_data', [])
     if not frames:
         return None
+    dl = mov_bone.get('dl', 0)
+    adj_frame = frame_idx - dl
     prev_kf = frames[0]
     next_kf = frames[0]
     for i, kf in enumerate(frames):
-        if kf['fi'] <= frame_idx:
+        if kf['fi'] <= adj_frame:
             prev_kf = kf
             next_kf = frames[i + 1] if i + 1 < len(frames) else kf
         else:
             next_kf = kf
             break
     span = next_kf['fi'] - prev_kf['fi']
-    t = max(0.0, min(1.0, (frame_idx - prev_kf['fi']) / span)) if span > 0 else 0
+    t = max(0.0, min(1.0, (adj_frame - prev_kf['fi']) / span)) if span > 0 else 0
+    twe = prev_kf.get('twE', 0)
+    if twe != 0:
+        t = _apply_tween_easing(t, twe)
     def _lerp(a, b):
         return a + (b - a) * t
     if prev_kf.get('tweenFrame', True) and span > 0:
@@ -437,6 +502,8 @@ def _interp_bone_keyframe(mov_bone, frame_idx):
         iy = _lerp(prev_kf.get('y', 0), next_kf.get('y', 0))
         icx = _lerp(prev_kf.get('cX', 1), next_kf.get('cX', 1))
         icy = _lerp(prev_kf.get('cY', 1), next_kf.get('cY', 1))
+        ikx = _lerp(prev_kf.get('kX', 0), next_kf.get('kX', 0))
+        iky = _lerp(prev_kf.get('kY', 0), next_kf.get('kY', 0))
         pc = prev_kf.get('color', {'a': 255, 'r': 255, 'g': 255, 'b': 255})
         nc = next_kf.get('color', {'a': 255, 'r': 255, 'g': 255, 'b': 255})
         ia = int(_lerp(pc.get('a', 255), nc.get('a', 255)))
@@ -446,14 +513,17 @@ def _interp_bone_keyframe(mov_bone, frame_idx):
     else:
         ix, iy = prev_kf.get('x', 0), prev_kf.get('y', 0)
         icx, icy = prev_kf.get('cX', 1), prev_kf.get('cY', 1)
+        ikx, iky = prev_kf.get('kX', 0), prev_kf.get('kY', 0)
         c_ = prev_kf.get('color', {'a': 255, 'r': 255, 'g': 255, 'b': 255})
         ia = c_.get('a', 255)
         ir, ig, ib = c_.get('r', 255), c_.get('g', 255), c_.get('b', 255)
     di = prev_kf.get('dI', 0)
-    return (ix, iy, icx, icy, di, ia, ir, ig, ib)
+    bd_src = prev_kf.get('bd_src', 1)
+    bd_dst = prev_kf.get('bd_dst', 771)
+    return (ix, iy, icx, icy, ikx, iky, di, ia, ir, ig, ib, bd_src, bd_dst)
 
 
-def _render_anim_frame(anim_data, armature, sprites, frame_idx, canvas_size=(200, 200)):
+def _render_anim_frame(anim_data, armature, sprites, frame_idx, canvas_size=(200, 200), texture_data=None):
     """Render a single frame of an ExportJson armature animation."""
     if not anim_data.get('mov_data'):
         return Image.new("RGBA", canvas_size, (0, 0, 0, 0))
@@ -462,30 +532,45 @@ def _render_anim_frame(anim_data, armature, sprites, frame_idx, canvas_size=(200
     movement = anim_data['mov_data'][0]
     bone_map = {b['name']: b for b in armature.get('bone_data', [])}
     mov_bone_map = {mb['name']: mb for mb in movement.get('mov_bone_data', [])}
+    tex_pivot = {}
+    if texture_data:
+        for td in texture_data:
+            tex_pivot[td.get('name', '') + '.png'] = (td.get('pX', 0.5), td.get('pY', 0.5))
 
+    import math as _math
     bone_world = {}
 
     def get_bone_world(bone_name):
+        """Returns (world_x, world_y, world_rotation_radians)."""
         if bone_name in bone_world:
             return bone_world[bone_name]
         bone = bone_map.get(bone_name)
         if not bone:
-            bone_world[bone_name] = (0, 0)
-            return (0, 0)
+            bone_world[bone_name] = (0, 0, 0)
+            return (0, 0, 0)
         bx, by = bone.get('x', 0), bone.get('y', 0)
+        bkx = bone.get('kX', 0)
         mb = mov_bone_map.get(bone_name)
         if mb:
             interp = _interp_bone_keyframe(mb, frame_idx)
             if interp:
                 bx += interp[0]
                 by += interp[1]
+                bkx += interp[4]
         parent = bone.get('parent', '')
         if parent:
-            px, py = get_bone_world(parent)
+            px, py, pr = get_bone_world(parent)
+            if abs(pr) > 0.001:
+                cos_r = _math.cos(pr)
+                sin_r = _math.sin(pr)
+                rx = bx * cos_r - by * sin_r
+                ry = bx * sin_r + by * cos_r
+                bx, by = rx, ry
             bx += px
             by += py
-        bone_world[bone_name] = (bx, by)
-        return (bx, by)
+            bkx += pr
+        bone_world[bone_name] = (bx, by, bkx)
+        return (bx, by, bkx)
 
     render_list = []
     for mov_bone in movement.get('mov_bone_data', []):
@@ -495,7 +580,7 @@ def _render_anim_frame(anim_data, armature, sprites, frame_idx, canvas_size=(200
         interp = _interp_bone_keyframe(mov_bone, frame_idx)
         if not interp:
             continue
-        _, _, icx, icy, di, ia, ir, ig, ib = interp
+        _, _, icx, icy, ikx, iky, di, ia, ir, ig, ib, bd_src, bd_dst = interp
 
         display_data = bone.get('display_data', [])
         if di < 0 or di >= len(display_data):
@@ -506,28 +591,59 @@ def _render_anim_frame(anim_data, armature, sprites, frame_idx, canvas_size=(200
             continue
 
         skin = display_data[di].get('skin_data', [{}])[0]
-        wx, wy = get_bone_world(mov_bone['name'])
-        final_x = wx + skin.get('x', 0)
-        final_y = -(wy + skin.get('y', 0))
+        skin_kx = skin.get('kX', 0)
+        wx, wy, world_rot = get_bone_world(mov_bone['name'])
+        sx_off, sy_off = skin.get('x', 0), skin.get('y', 0)
+        total_rot = world_rot + skin_kx
+        if abs(total_rot) > 0.001:
+            cos_r = _math.cos(total_rot)
+            sin_r = _math.sin(total_rot)
+            rx = sx_off * cos_r - sy_off * sin_r
+            ry = sx_off * sin_r + sy_off * cos_r
+            sx_off, sy_off = rx, ry
+        final_x = wx + sx_off
+        final_y = -(wy + sy_off)
         bone_z = bone.get('z', 0)
+        rot_deg = _math.degrees(total_rot)
+        rough_half = max(sprite_img.size[0], sprite_img.size[1]) * max(abs(icx), abs(icy)) + 200
+        if (cx + final_x + rough_half < 0 or cx + final_x - rough_half > canvas_size[0] or
+            cy + final_y + rough_half < 0 or cy + final_y - rough_half > canvas_size[1]):
+            continue
+        blend = 'add' if bd_src == 1 and bd_dst == 1 else 'normal'
         render_list.append((bone_z, sprite_img, final_x, final_y,
-                            abs(icx), abs(icy), icx < 0, icy < 0, ia, ir, ig, ib))
+                            abs(icx), abs(icy), icx < 0, icy < 0, rot_deg, ia, ir, ig, ib, blend, sprite_name))
 
+    _sprite_cache = {}
     render_list.sort(key=lambda r: r[0])
-    for z, sprite, px, py, sx, sy, flip_h, flip_v, alpha, r, g, b in render_list:
-        img = sprite.copy()
-        w, h = img.size
-        nw, nh = max(1, int(w * sx)), max(1, int(h * sy))
-        if (nw, nh) != (w, h):
-            img = img.resize((nw, nh), Image.LANCZOS)
-        if flip_h:
-            img = img.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-        if flip_v:
-            img = img.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
-        if alpha < 255 or r < 255 or g < 255 or b < 255:
+    for z, sprite, px, py, sx, sy, flip_h, flip_v, rot_deg, alpha, r, g, b, blend, sprite_name in render_list:
+        qsx = round(sx * 20) / 20
+        qsy = round(sy * 20) / 20
+        qrot = round(rot_deg * 2) / 2
+        cache_key = (sprite_name, int(qsx * 100), int(qsy * 100), flip_h, flip_v, int(qrot * 10))
+        if alpha == 0:
+            continue
+        if cache_key in _sprite_cache:
+            img = _sprite_cache[cache_key]
+        else:
+            img = sprite
+            w, h = img.size
+            nw, nh = max(1, int(w * qsx)), max(1, int(h * qsy))
+            if (nw, nh) != (w, h):
+                img = img.resize((nw, nh), Image.BILINEAR)
+            if flip_h:
+                img = img.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+            if flip_v:
+                img = img.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+            if abs(rot_deg) > 0.1:
+                img = img.rotate(-rot_deg, expand=True, resample=Image.BILINEAR)
+            _sprite_cache[cache_key] = img
+        if alpha < 250 or r < 250 or g < 250 or b < 250:
             img = ImageChops.multiply(img, Image.new("RGBA", img.size, (r, g, b, alpha)))
-        dx = cx + int(px) - nw // 2
-        dy = cy + int(py) - nh // 2
+        pivot = tex_pivot.get(sprite_name, (0.5, 0.5))
+        dx = cx + int(px) - int(img.width * pivot[0])
+        dy = cy + int(py) - int(img.height * pivot[1])
+        if dx + img.width <= 0 or dy + img.height <= 0 or dx >= canvas.width or dy >= canvas.height:
+            continue
         src_x, src_y = 0, 0
         if dx < 0:
             src_x = -dx; dx = 0
@@ -536,7 +652,13 @@ def _render_anim_frame(anim_data, armature, sprites, frame_idx, canvas_size=(200
         cw = min(img.width - src_x, canvas.width - dx)
         ch = min(img.height - src_y, canvas.height - dy)
         if cw > 0 and ch > 0:
-            canvas.alpha_composite(img.crop((src_x, src_y, src_x + cw, src_y + ch)), (dx, dy))
+            cropped = img.crop((src_x, src_y, src_x + cw, src_y + ch))
+            if blend == 'add':
+                region = canvas.crop((dx, dy, dx + cw, dy + ch))
+                added = ImageChops.add(region, cropped)
+                canvas.paste(added, (dx, dy))
+            else:
+                canvas.alpha_composite(cropped, (dx, dy))
     return canvas
 
 
@@ -1782,7 +1904,7 @@ class KHUxExplorer(QMainWindow):
 
             mov_combo = QComboBox()
             if anim_obj:
-                armature, anim_data, _, plists, pngs = _parse_exportjson(anim_obj)
+                armature, anim_data, tex_data, plists, pngs = _parse_exportjson(anim_obj)
                 movs = anim_data.get('mov_data', [])
                 best_idx = 0
                 best_bones = 0
@@ -1818,7 +1940,7 @@ class KHUxExplorer(QMainWindow):
                             atlas = KHUxBTF.from_bytes(pne.data).decode(use_canvas=True)
                             for fn, fx, fy, fw, fh in frames:
                                 if fw > 0 and fh > 0:
-                                    sprites[fn] = atlas.crop((fx, fy, fx + fw, fy + fh))
+                                    sprites[fn] = atlas.crop((fx, fy, fx + fw, fy + fh)).convert("RGBA")
                         except Exception:
                             pass
 
@@ -1829,6 +1951,7 @@ class KHUxExplorer(QMainWindow):
                 'mov_combo': mov_combo,
                 'armature': armature,
                 'anim_data': anim_data,
+                'texture_data': tex_data if anim_obj else [],
                 'sprites': sprites,
                 'gx': gx,
                 'gy': gy,
@@ -1858,7 +1981,7 @@ class KHUxExplorer(QMainWindow):
             return
         if not _detect_exportjson(anim_obj):
             return
-        armature, anim_data, _, plists, pngs = _parse_exportjson(anim_obj)
+        armature, anim_data, tex_data, plists, pngs = _parse_exportjson(anim_obj)
         ctrl['armature'] = armature
         ctrl['anim_data'] = anim_data
         ctrl['mov_combo'].blockSignals(True)
@@ -1886,10 +2009,11 @@ class KHUxExplorer(QMainWindow):
                         atlas = KHUxBTF.from_bytes(pne.data).decode(use_canvas=True)
                         for fn, fx, fy, fw, fh in frames:
                             if fw > 0 and fh > 0:
-                                sprites[fn] = atlas.crop((fx, fy, fx + fw, fy + fh))
+                                sprites[fn] = atlas.crop((fx, fy, fx + fw, fy + fh)).convert("RGBA")
                     except Exception:
                         pass
         ctrl['sprites'] = sprites
+        ctrl['texture_data'] = tex_data
         ctrl['mode_combo'].setCurrentIndex(1)
         self._on_scene_anim_changed()
 
@@ -2004,7 +2128,8 @@ class KHUxExplorer(QMainWindow):
                         anim_single = {'mov_data': [mov]}
                         frame_img = _render_anim_frame(anim_single, ctrl['armature'],
                                                         ctrl['sprites'], frame,
-                                                        canvas_size=(960, 640))
+                                                        canvas_size=(960, 640),
+                                                        texture_data=ctrl.get('texture_data'))
                         offset_x = int(gx) - 480
                         offset_y = -(int(gy) - 320)
                         dx, dy = offset_x, offset_y
@@ -2119,12 +2244,13 @@ class KHUxExplorer(QMainWindow):
                         atlas = KHUxBTF.from_bytes(pnge.data).decode(use_canvas=True)
                         for name, x, y, w, h in frames:
                             if w > 0 and h > 0:
-                                sprites[name] = atlas.crop((x, y, x + w, y + h))
+                                sprites[name] = atlas.crop((x, y, x + w, y + h)).convert("RGBA")
                     except Exception:
                         pass
 
         self._anim_armature = armature
         self._anim_data = anim
+        self._anim_texture_data = tex_data
         self._anim_sprites = sprites
         movs = anim.get('mov_data', [])
         best_idx = 0
@@ -2144,6 +2270,7 @@ class KHUxExplorer(QMainWindow):
         self._anim_movement_idx = best_idx
         self._anim_dr = movs[best_idx].get('dr', 1)
         self._anim_loop = movs[best_idx].get('lp', False)
+        self._anim_sc = movs[best_idx].get('sc', 1.0)
         self._anim_frame = 0
         self._anim_playing = False
 
@@ -2170,6 +2297,7 @@ class KHUxExplorer(QMainWindow):
         self._anim_movement_idx = idx
         self._anim_dr = movs[idx].get('dr', 1)
         self._anim_loop = movs[idx].get('lp', False)
+        self._anim_sc = movs[idx].get('sc', 1.0)
         self._anim_frame = 0
         self._anim_slider.setRange(0, self._anim_dr - 1)
         self._anim_slider.setValue(0)
@@ -2178,26 +2306,35 @@ class KHUxExplorer(QMainWindow):
         self._anim_render_current()
 
     def _anim_toggle_play(self):
+        import time as _time
         if self._anim_playing:
             self._anim_playing = False
             self._anim_timer.stop()
             self._anim_play_btn.setText("Play")
         else:
             self._anim_playing = True
+            self._anim_play_start = _time.perf_counter()
+            self._anim_play_start_frame = self._anim_frame
             self._anim_play_btn.setText("Pause")
             self._anim_timer.start(17)
 
     def _anim_tick(self):
-        self._anim_frame += 1
+        import time as _time
+        elapsed = _time.perf_counter() - self._anim_play_start
+        sc = getattr(self, '_anim_sc', 1.0)
+        target_frame = self._anim_play_start_frame + int(elapsed * 60 * sc)
         dr = self._anim_dr
-        if self._anim_frame >= dr:
+        if target_frame >= dr:
             if self._anim_loop:
-                self._anim_frame = 0
+                target_frame = target_frame % dr
+                self._anim_play_start = _time.perf_counter()
+                self._anim_play_start_frame = target_frame
             else:
-                self._anim_frame = dr - 1
+                target_frame = dr - 1
                 self._anim_playing = False
                 self._anim_timer.stop()
                 self._anim_play_btn.setText("Play")
+        self._anim_frame = target_frame
         self._anim_slider.blockSignals(True)
         self._anim_slider.setValue(self._anim_frame)
         self._anim_slider.blockSignals(False)
@@ -2217,7 +2354,8 @@ class KHUxExplorer(QMainWindow):
         anim_single = {'mov_data': [mov]}
         frame_img = _render_anim_frame(anim_single, self._anim_armature,
                                         self._anim_sprites, self._anim_frame,
-                                        canvas_size=(canvas_w, canvas_h))
+                                        canvas_size=(canvas_w, canvas_h),
+                                        texture_data=getattr(self, '_anim_texture_data', None))
         bg = self._anim_bg.copy()
         bg.alpha_composite(frame_img, (0, 0))
         self._current_pil_image = bg
@@ -3123,12 +3261,12 @@ class KHUxExplorer(QMainWindow):
             return False
         try:
             plist_data = entry.data.decode("utf-8-sig")
-            frames = _parse_plist_frames(plist_data)
+            frames, tex_filename = _parse_plist(plist_data)
         except Exception:
             return False
         if not frames:
             return False
-        png_name = entry.name.rsplit(".", 1)[0] + ".png"
+        png_name = tex_filename if tex_filename else entry.name.rsplit(".", 1)[0] + ".png"
         png_entry = self._find_entry(png_name)
         if not png_entry or len(png_entry.data) < 4 or png_entry.data[:4] != b'\x89BTF':
             return False
@@ -3139,11 +3277,23 @@ class KHUxExplorer(QMainWindow):
 
         padding, label_h, max_thumb = 10, 14, 128
         sprites = []
-        for name, x, y, w, h in frames:
+        for frame_data in frames:
+            name, x, y, w, h = frame_data[0], frame_data[1], frame_data[2], frame_data[3], frame_data[4]
+            orig_w = frame_data[5] if len(frame_data) > 5 else w
+            orig_h = frame_data[6] if len(frame_data) > 6 else h
+            off_x = frame_data[7] if len(frame_data) > 7 else 0
+            off_y = frame_data[8] if len(frame_data) > 8 else 0
             if w <= 0 or h <= 0:
                 continue
-            sprite = atlas.crop((x, y, x + w, y + h))
-            sprites.append((name, sprite, x, y, w, h))
+            cropped = atlas.crop((x, y, x + w, y + h))
+            if orig_w != w or orig_h != h:
+                sprite = Image.new("RGBA", (int(orig_w), int(orig_h)), (0, 0, 0, 0))
+                px = int((orig_w - w) / 2 + off_x)
+                py = int((orig_h - h) / 2 - off_y)
+                sprite.alpha_composite(cropped, (max(0, px), max(0, py)))
+            else:
+                sprite = cropped
+            sprites.append((name, sprite, x, y, int(orig_w), int(orig_h)))
         if not sprites:
             return False
 
@@ -3419,7 +3569,7 @@ class KHUxExplorer(QMainWindow):
         widget_idx = _counter[0]
         _counter[0] += 1
 
-        x, y, w, h, ax, ay, tex_path, cn, nm, s9, s9x, s9y, s9w, s9h = _cs_widget_props(node)
+        x, y, w, h, ax, ay, tex_path, cn, nm, s9, s9x, s9y, s9w, s9h, rotation, wsx, wsy, flip_x, flip_y, opacity = _cs_widget_props(node)
         anchor_wx = px + x
         anchor_wy = py + y
 
@@ -3446,16 +3596,42 @@ class KHUxExplorer(QMainWindow):
         pil_y = int(canvas.height - bl_y - h)
 
         rendered = False
+        if cn == "Panel" and draw_images:
+            opts_bg = node.get('options', node)
+            ct = opts_bg.get('colorType', 0)
+            bg_opacity = int(opts_bg.get('bgColorOpacity', 0))
+            if ct > 0 and bg_opacity > 0 and w > 0 and h > 0:
+                bgr = int(opts_bg.get('bgColorR', 150))
+                bgg = int(opts_bg.get('bgColorG', 200))
+                bgb = int(opts_bg.get('bgColorB', 255))
+                bg_img = Image.new("RGBA", (w, h), (bgr, bgg, bgb, bg_opacity))
+                bx, by = max(0, pil_x), max(0, pil_y)
+                bw = min(w, canvas.width - bx)
+                bh = min(h, canvas.height - by)
+                if bw > 0 and bh > 0:
+                    canvas.alpha_composite(bg_img.crop((0, 0, bw, bh)), (bx, by))
+
         if tex_path and draw_images:
             e = self._find_entry(tex_path)
             if e and len(e.data) >= 4 and e.data[:4] == b'\x89BTF':
                 try:
                     img = KHUxBTF.from_bytes(e.data).decode(use_canvas=True)
-                    if w > 0 and h > 0 and (w, h) != img.size:
+                    ignore_size = node.get('options', node).get('ignoreSize', False)
+                    if not ignore_size and w > 0 and h > 0 and (w, h) != img.size:
                         if s9:
                             img = _scale9_resize(img, w, h, s9x, s9y, s9w, s9h)
                         else:
                             img = img.resize((w, h), Image.LANCZOS)
+                    if flip_x:
+                        img = img.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                    if flip_y:
+                        img = img.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+                    if abs(wsx - 1) > 0.01 or abs(wsy - 1) > 0.01:
+                        img = img.resize((max(1, int(img.width * abs(wsx))), max(1, int(img.height * abs(wsy)))), Image.LANCZOS)
+                    if abs(rotation) > 0.1:
+                        img = img.rotate(-rotation, expand=True, resample=Image.BICUBIC)
+                    if opacity < 255:
+                        img = ImageChops.multiply(img, Image.new("RGBA", img.size, (255, 255, 255, opacity)))
                     src_x, src_y = 0, 0
                     dx, dy = pil_x, pil_y
                     if dx < 0:
@@ -3471,9 +3647,9 @@ class KHUxExplorer(QMainWindow):
                 except Exception:
                     pass
 
-        if cn == "Label" and w > 0 and h > 0 and draw_text:
+        if cn in ("Label", "TextField") and w > 0 and h > 0 and draw_text:
             opts = node.get("options", node)
-            text = opts.get("text", "")
+            text = opts.get("text", "") or opts.get("placeHolder", "")
             if text:
                 font_size = int(opts.get("fontSize", 14))
                 cr = int(opts.get("colorR", 255))
@@ -3514,9 +3690,31 @@ class KHUxExplorer(QMainWindow):
                     label = f"{cn}: {nm}"[:35] if nm else str(cn)
                     draw.text((rx + 3, ry + 2), label, fill=(140, 180, 220))
 
-        for child in node.get('children', []):
-            if self._cs_render_node(canvas, child, anchor_wx, anchor_wy, show_hidden, _counter):
-                rendered = True
+        children = node.get('children', [])
+        if len(children) > 1:
+            children = sorted(children, key=lambda c: c.get('options', c).get('ZOrder', 0))
+        opts_clip = node.get('options', node)
+        if opts_clip.get('clipAble', False) and w > 0 and h > 0:
+            clip_canvas = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+            clip_ox = anchor_wx - w * ax
+            clip_oy = anchor_wy - h * ay
+            for child in children:
+                if self._cs_render_node(clip_canvas, child, anchor_wx - clip_ox, anchor_wy - clip_oy, show_hidden, _counter):
+                    rendered = True
+            cpx, cpy = int(clip_ox), int(canvas.height - clip_oy - h)
+            sx, sy = 0, 0
+            if cpx < 0:
+                sx = -cpx; cpx = 0
+            if cpy < 0:
+                sy = -cpy; cpy = 0
+            cw_clip = min(w - sx, canvas.width - cpx)
+            ch_clip = min(h - sy, canvas.height - cpy)
+            if cw_clip > 0 and ch_clip > 0:
+                canvas.alpha_composite(clip_canvas.crop((sx, sy, sx + cw_clip, sy + ch_clip)), (cpx, cpy))
+        else:
+            for child in children:
+                if self._cs_render_node(canvas, child, anchor_wx, anchor_wy, show_hidden, _counter):
+                    rendered = True
         return rendered
 
     _cs_font_cache: Dict[tuple, Any] = {}
