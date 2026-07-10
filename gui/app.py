@@ -106,6 +106,7 @@ FORMAT_COLORS = {
     "json":    "#dcdcaa",
     "ui":      "#4fc1e9",
     "anim":    "#e6c07b",
+    "scene":   "#98c379",
     "text":    "#d4d4d4",
     "ttf":     "#e0a050",
     "stg":     "#569cd6",
@@ -133,6 +134,7 @@ FORMAT_BADGES = {
     "chp":     "[CHP]",
     "ui":      "[UI]",
     "anim":    "[ANIM]",
+    "scene":   "[SCENE]",
     "index":   "[IDX]",
     "unknown": "[???]",
 }
@@ -341,16 +343,18 @@ def _cs_bounding_box(node, px=0, py=0, show_hidden=False):
     """Compute the bounding box of widgets in the tree. Returns (min_x, min_y, max_x, max_y) in cocos2d world coords."""
     if not isinstance(node, dict):
         return (px, py, px, py)
-    opts = node.get('options', node)
-    if not show_hidden and not opts.get('visible', True):
-        return (px, py, px, py)
     x, y, w, h, ax, ay, *_ = _cs_widget_props(node)
     awx = px + x
     awy = py + y
-    bl_x = awx - w * ax
-    bl_y = awy - h * ay
-    min_x, min_y = bl_x, bl_y
-    max_x, max_y = bl_x + w, bl_y + h
+    opts = node.get('options', node)
+    if not show_hidden and not opts.get('visible', True):
+        min_x, min_y = awx, awy
+        max_x, max_y = awx, awy
+    else:
+        bl_x = awx - w * ax
+        bl_y = awy - h * ay
+        min_x, min_y = bl_x, bl_y
+        max_x, max_y = bl_x + w, bl_y + h
     for child in node.get('children', []):
         cx1, cy1, cx2, cy2 = _cs_bounding_box(child, awx, awy, show_hidden)
         min_x = min(min_x, cx1)
@@ -1592,6 +1596,29 @@ class KHUxExplorer(QMainWindow):
         layout.addWidget(self._layers_scroll, 1)
 
         self._layer_checkboxes: List[tuple] = []
+
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setStyleSheet(f"color: {COLORS['border']};")
+        layout.addWidget(sep2)
+
+        anim_label = QLabel("Animations")
+        anim_label.setStyleSheet(f"font-weight: bold; color: {COLORS['fg_bright']};")
+        layout.addWidget(anim_label)
+
+        self._scene_anims_scroll = QScrollArea()
+        self._scene_anims_scroll.setWidgetResizable(True)
+        self._scene_anims_scroll.setStyleSheet(f"border: none; background-color: {COLORS['bg']};")
+        self._scene_anims_widget = QWidget()
+        self._scene_anims_layout = QVBoxLayout(self._scene_anims_widget)
+        self._scene_anims_layout.setContentsMargins(0, 0, 0, 0)
+        self._scene_anims_layout.setSpacing(4)
+        self._scene_anims_layout.addStretch()
+        self._scene_anims_scroll.setWidget(self._scene_anims_widget)
+        layout.addWidget(self._scene_anims_scroll, 1)
+
+        self._scene_anim_controls: List[dict] = []
+
         self._preview_controls_tab_idx = self._right_notebook.addTab(container, "Preview")
         self._right_notebook.setTabVisible(self._preview_controls_tab_idx, False)
 
@@ -1617,7 +1644,7 @@ class KHUxExplorer(QMainWindow):
             indent = "  " * depth
             label = f"{indent}[{cn}] {nm}" if nm else f"{indent}[{cn}]"
             cb = QCheckBox(label)
-            cb.setChecked(visible)
+            cb.setChecked(True)
             cb.setStyleSheet(f"color: {COLORS['fg']}; font: 9pt 'Consolas'; padding: 1px 0px;")
             cb.toggled.connect(self._on_layer_changed)
             self._layers_layout.addWidget(cb)
@@ -1653,11 +1680,357 @@ class KHUxExplorer(QMainWindow):
                 relevant = any_draw
             cb.setEnabled(relevant)
 
+    def _clear_scene_anims(self):
+        if hasattr(self, '_scene_anim_timer') and self._scene_anim_timer.isActive():
+            self._scene_anim_timer.stop()
+        for ctrl in self._scene_anim_controls:
+            for w in ctrl.get('widgets', []):
+                w.setParent(None)
+        self._scene_anim_controls.clear()
+        while self._scene_anims_layout.count():
+            item = self._scene_anims_layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+        self._scene_anims_layout.addStretch()
+
+    def _populate_scene_anims(self, obj):
+        """Build animation controls for CCArmature components in a Scene file."""
+        from PyQt6.QtWidgets import QComboBox
+
+        for ctrl in self._scene_anim_controls:
+            for w in ctrl.get('widgets', []):
+                w.setParent(None)
+        self._scene_anim_controls.clear()
+        while self._scene_anims_layout.count():
+            item = self._scene_anims_layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+
+        self._scene_anim_entries = []
+
+        available_exports = []
+        for ename in sorted(self.entry_map):
+            if ename.endswith('.ExportJson'):
+                available_exports.append(ename)
+
+        def find_anims(gos, parent_x, parent_y):
+            for go in gos:
+                gx = parent_x + float(go.get('x', 0))
+                gy = parent_y + float(go.get('y', 0))
+                nm = go.get('name', '?')
+                for comp in go.get('components', []):
+                    if comp.get('classname') != 'CCArmature':
+                        continue
+                    fd = comp.get('fileData', {})
+                    path = fd.get('path', '')
+                    action = comp.get('selectedactionname', '') or ''
+                    if action == 'None':
+                        action = ''
+                    self._scene_anim_entries.append((nm, path, gx, gy, action))
+                find_anims(go.get('gameobjects', []), gx, gy)
+
+        find_anims(obj.get('gameobjects', []), 0, 0)
+
+        for i, (nm, path, gx, gy, action) in enumerate(self._scene_anim_entries):
+            if path:
+                entry = self._find_entry(path)
+            else:
+                entry = None
+
+            anim_obj = None
+            if entry:
+                try:
+                    anim_obj = json.loads(entry.data.decode('utf-8'))
+                    if not _detect_exportjson(anim_obj):
+                        anim_obj = None
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
+            row_widget = QWidget()
+            row_layout = QVBoxLayout(row_widget)
+            row_layout.setContentsMargins(2, 2, 2, 6)
+            row_layout.setSpacing(2)
+
+            path_label = path.split('/')[-1] if path else "(no file)"
+            name_label = QLabel(f"{nm} — {path_label}")
+            name_label.setStyleSheet(f"color: {COLORS['fg']}; font: 9pt 'Consolas';")
+            row_layout.addWidget(name_label)
+
+            # File selector for path-less entries
+            file_combo = None
+            if not anim_obj:
+                file_row = QHBoxLayout()
+                file_label = QLabel("File:")
+                file_label.setStyleSheet(f"color: {COLORS['fg_dim']}; font-size: 9pt;")
+                file_row.addWidget(file_label)
+                file_combo = QComboBox()
+                file_combo.addItem("(none)")
+                for epath in available_exports:
+                    file_combo.addItem(epath.split('/')[-1], epath)
+                file_combo.currentIndexChanged.connect(lambda idx, si=i: self._on_scene_anim_file_changed(si, idx))
+                file_row.addWidget(file_combo, 1)
+                row_layout.addLayout(file_row)
+
+            controls_row = QHBoxLayout()
+            mode_combo = QComboBox()
+            mode_combo.addItems(["Off", "Last Frame", "Play Once", "Loop"])
+            default_mode = 0 if not anim_obj else (3 if action else 1)
+            mode_combo.setCurrentIndex(default_mode)
+            mode_combo.setFixedWidth(90)
+            mode_combo.currentIndexChanged.connect(self._on_scene_anim_changed)
+            controls_row.addWidget(mode_combo)
+
+            mov_combo = QComboBox()
+            if anim_obj:
+                armature, anim_data, _, plists, pngs = _parse_exportjson(anim_obj)
+                movs = anim_data.get('mov_data', [])
+                best_idx = 0
+                best_bones = 0
+                action_matched = False
+                for mi, mov in enumerate(movs):
+                    bc = len(mov.get('mov_bone_data', []))
+                    mov_combo.addItem(f"{mov.get('name', f'mov_{mi}')} ({mov.get('dr', 0)}f)")
+                    if action and mov.get('name') == action:
+                        best_idx = mi
+                        action_matched = True
+                    elif not action_matched and bc > best_bones:
+                        best_bones = bc
+                        best_idx = mi
+                mov_combo.setCurrentIndex(best_idx)
+            else:
+                armature = {}
+                anim_data = {}
+                plists, pngs = [], []
+            mov_combo.currentIndexChanged.connect(self._on_scene_anim_changed)
+            controls_row.addWidget(mov_combo, 1)
+
+            row_layout.addLayout(controls_row)
+            self._scene_anims_layout.insertWidget(self._scene_anims_layout.count() - 1, row_widget)
+
+            sprites = {}
+            if HAS_BTF and anim_obj:
+                for pp, pn in zip(plists, pngs):
+                    pe = self._find_entry(pp)
+                    pne = self._find_entry(pn)
+                    if pe and pne and len(pne.data) >= 4 and pne.data[:4] == b'\x89BTF':
+                        try:
+                            frames = _parse_plist_frames(pe.data.decode('utf-8-sig'))
+                            atlas = KHUxBTF.from_bytes(pne.data).decode(use_canvas=True)
+                            for fn, fx, fy, fw, fh in frames:
+                                if fw > 0 and fh > 0:
+                                    sprites[fn] = atlas.crop((fx, fy, fx + fw, fy + fh))
+                        except Exception:
+                            pass
+
+            self._scene_anim_controls.append({
+                'widgets': [row_widget],
+                'file_combo': file_combo,
+                'mode_combo': mode_combo,
+                'mov_combo': mov_combo,
+                'armature': armature,
+                'anim_data': anim_data,
+                'sprites': sprites,
+                'gx': gx,
+                'gy': gy,
+                'frame': 0,
+            })
+
+    def _on_scene_anim_file_changed(self, scene_idx, combo_idx):
+        """Handle user selecting an ExportJson file for a path-less CCArmature."""
+        if scene_idx >= len(self._scene_anim_controls):
+            return
+        ctrl = self._scene_anim_controls[scene_idx]
+        fc = ctrl.get('file_combo')
+        if not fc or combo_idx <= 0:
+            ctrl['armature'] = {}
+            ctrl['anim_data'] = {}
+            ctrl['sprites'] = {}
+            ctrl['mov_combo'].clear()
+            self._on_scene_anim_changed()
+            return
+        epath = fc.itemData(combo_idx)
+        entry = self._find_entry(epath)
+        if not entry:
+            return
+        try:
+            anim_obj = json.loads(entry.data.decode('utf-8'))
+        except (json.JSONDecodeError, ValueError):
+            return
+        if not _detect_exportjson(anim_obj):
+            return
+        armature, anim_data, _, plists, pngs = _parse_exportjson(anim_obj)
+        ctrl['armature'] = armature
+        ctrl['anim_data'] = anim_data
+        ctrl['mov_combo'].blockSignals(True)
+        ctrl['mov_combo'].clear()
+        movs = anim_data.get('mov_data', [])
+        best_idx = 0
+        best_bones = 0
+        for mi, mov in enumerate(movs):
+            bc = len(mov.get('mov_bone_data', []))
+            ctrl['mov_combo'].addItem(f"{mov.get('name', f'mov_{mi}')} ({mov.get('dr', 0)}f)")
+            if bc > best_bones:
+                best_bones = bc
+                best_idx = mi
+        ctrl['mov_combo'].setCurrentIndex(best_idx)
+        ctrl['mov_combo'].blockSignals(False)
+
+        sprites = {}
+        if HAS_BTF:
+            for pp, pn in zip(plists, pngs):
+                pe = self._find_entry(pp)
+                pne = self._find_entry(pn)
+                if pe and pne and len(pne.data) >= 4 and pne.data[:4] == b'\x89BTF':
+                    try:
+                        frames = _parse_plist_frames(pe.data.decode('utf-8-sig'))
+                        atlas = KHUxBTF.from_bytes(pne.data).decode(use_canvas=True)
+                        for fn, fx, fy, fw, fh in frames:
+                            if fw > 0 and fh > 0:
+                                sprites[fn] = atlas.crop((fx, fy, fx + fw, fy + fh))
+                    except Exception:
+                        pass
+        ctrl['sprites'] = sprites
+        ctrl['mode_combo'].setCurrentIndex(1)
+        self._on_scene_anim_changed()
+
+    def _on_scene_anim_changed(self, _idx=None):
+        for ctrl in self._scene_anim_controls:
+            ctrl['frame'] = 0
+        if hasattr(self, '_scene_anim_timer') and self._scene_anim_timer.isActive():
+            self._scene_anim_timer.stop()
+        any_playing = any(
+            ctrl['mode_combo'].currentIndex() in (2, 3)
+            for ctrl in self._scene_anim_controls
+        )
+        if any_playing:
+            if not hasattr(self, '_scene_anim_timer'):
+                self._scene_anim_timer = QTimer(self)
+                self._scene_anim_timer.timeout.connect(self._scene_anim_tick)
+            self._scene_anim_timer.start(17)
+        self._render_scene_with_anims()
+
+    def _scene_anim_tick(self):
+        any_active = False
+        for ctrl in self._scene_anim_controls:
+            mode = ctrl['mode_combo'].currentIndex()
+            if mode not in (2, 3):
+                continue
+            mov_idx = ctrl['mov_combo'].currentIndex()
+            movs = ctrl['anim_data'].get('mov_data', [])
+            if mov_idx >= len(movs):
+                continue
+            dr = movs[mov_idx].get('dr', 1)
+            ctrl['frame'] += 1
+            if ctrl['frame'] >= dr:
+                if mode == 3:
+                    ctrl['frame'] = 0
+                    any_active = True
+                else:
+                    ctrl['frame'] = dr - 1
+            else:
+                any_active = True
+        if not any_active:
+            self._scene_anim_timer.stop()
+        self._render_scene_with_anims()
+
+    def _render_scene_with_anims(self):
+        scene_obj = getattr(self, '_scene_obj', None)
+        if not scene_obj:
+            return
+        canvas = Image.new('RGBA', (960, 640), (40, 40, 42, 255))
+        show_hidden = bool(getattr(self, '_show_hidden_cb', None) and self._show_hidden_cb.isChecked())
+        anim_idx = [0]
+
+        def render_gameobjects(gos, parent_x, parent_y):
+            for go in gos:
+                if not show_hidden and not go.get('visible', 1):
+                    # Still count CCArmature components to keep anim_idx in sync
+                    for comp in go.get('components', []):
+                        if comp.get('classname') == 'CCArmature':
+                            anim_idx[0] += 1
+                    continue
+                gx = parent_x + float(go.get('x', 0))
+                gy = parent_y + float(go.get('y', 0))
+                for comp in go.get('components', []):
+                    cn = comp.get('classname', '')
+                    if cn == 'GUIComponent':
+                        fd = comp.get('fileData', {})
+                        if not fd.get('path'):
+                            continue
+                        sub_entry = self._find_entry(fd['path'])
+                        if not sub_entry:
+                            continue
+                        try:
+                            sub_obj = json.loads(sub_entry.data.decode('utf-8'))
+                        except (json.JSONDecodeError, ValueError):
+                            continue
+                        if 'widgetTree' not in sub_obj:
+                            continue
+                        root = sub_obj['widgetTree']
+                        bx1, by1, bx2, by2 = _cs_bounding_box(root, show_hidden=show_hidden)
+                        sw = max(int(bx2 - bx1), 50)
+                        sh = max(int(by2 - by1), 50)
+                        sub_canvas = Image.new('RGBA', (sw, sh), (0, 0, 0, 0))
+                        ox = -bx1 if bx1 < 0 else 0
+                        oy = -by1 if by1 < 0 else 0
+                        self._cs_render_node(sub_canvas, root, ox, oy, show_hidden)
+                        dx = int(gx)
+                        dy = int(640 - gy - sub_canvas.height)
+                        sx, sy = 0, 0
+                        if dx < 0:
+                            sx = -dx; dx = 0
+                        if dy < 0:
+                            sy = -dy; dy = 0
+                        cw = min(sub_canvas.width - sx, canvas.width - dx)
+                        ch = min(sub_canvas.height - sy, canvas.height - dy)
+                        if cw > 0 and ch > 0:
+                            canvas.alpha_composite(sub_canvas.crop((sx, sy, sx + cw, sy + ch)), (dx, dy))
+                    elif cn == 'CCArmature':
+                        ci = anim_idx[0]
+                        anim_idx[0] += 1
+                        if ci >= len(self._scene_anim_controls):
+                            continue
+                        ctrl = self._scene_anim_controls[ci]
+                        mode = ctrl['mode_combo'].currentIndex()
+                        if mode == 0:
+                            continue
+                        mov_idx = ctrl['mov_combo'].currentIndex()
+                        movs = ctrl['anim_data'].get('mov_data', [])
+                        if not movs or mov_idx >= len(movs):
+                            continue
+                        mov = movs[mov_idx]
+                        dr = mov.get('dr', 1)
+                        frame = dr - 1 if mode == 1 else ctrl['frame']
+                        anim_single = {'mov_data': [mov]}
+                        frame_img = _render_anim_frame(anim_single, ctrl['armature'],
+                                                        ctrl['sprites'], frame,
+                                                        canvas_size=(960, 640))
+                        offset_x = int(gx) - 480
+                        offset_y = -(int(gy) - 320)
+                        dx, dy = offset_x, offset_y
+                        sx, sy = 0, 0
+                        if dx < 0:
+                            sx = -dx; dx = 0
+                        if dy < 0:
+                            sy = -dy; dy = 0
+                        cw = min(frame_img.width - sx, canvas.width - dx)
+                        ch = min(frame_img.height - sy, canvas.height - dy)
+                        if cw > 0 and ch > 0:
+                            canvas.alpha_composite(frame_img.crop((sx, sy, sx + cw, sy + ch)), (dx, dy))
+                render_gameobjects(go.get('gameobjects', []), gx, gy)
+
+        render_gameobjects(scene_obj.get('gameobjects', []), 0, 0)
+
+        self._current_pil_image = canvas
+        self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas), keep_zoom=True)
+
     def _on_layer_changed(self, _checked=None):
         self._update_layer_enabled_state()
         if self.current_entry:
             fmt = self.entry_formats.get(self.current_entry.name, "")
-            if fmt == "ui":
+            if fmt == "scene" and getattr(self, '_scene_obj', None):
+                self._render_scene_with_anims()
+            elif fmt in ("ui", "scene"):
                 self._render_cocostudio_visual(self.current_entry)
 
     def _get_layer_visibility(self):
@@ -1939,7 +2312,7 @@ class KHUxExplorer(QMainWindow):
             return True
         real_table = [i for i, e in enumerate(entry_list) if not _is_stub(e)]
         for e in entry_list:
-            if e.name.lower().endswith(".ttf"):
+            if e.name.lower().endswith(".ttf") and not _is_stub(e):
                 self.entry_formats[e.name] = "ttf"
             elif e.data and len(e.data) >= 4:
                 fmt = detect_format(e.data[:4])
@@ -1949,7 +2322,11 @@ class KHUxExplorer(QMainWindow):
                     if stub_val < len(real_table):
                         target_idx = real_table[stub_val]
                         target_data = entry_list[target_idx].data
-                        real_fmt = detect_format(target_data[:4])
+                        real_fmt = detect_format(target_data[:min(64, len(target_data))])
+                        if real_fmt in ("unknown", "index"):
+                            ext = e.name.rsplit(".", 1)[-1].lower() if "." in e.name else ""
+                            if ext in ("ttf", "lwf", "json", "txt", "plist"):
+                                real_fmt = ext
                         self.entry_formats[e.name] = f"link:{real_fmt}"
                         self.entry_link_targets[e.name] = target_idx
                     else:
@@ -1960,6 +2337,8 @@ class KHUxExplorer(QMainWindow):
                             probe = json.loads(e.data.decode("utf-8", errors="replace"))
                             if _detect_exportjson(probe):
                                 fmt = "anim"
+                            elif probe.get('classname') == 'CCNode' and 'gameobjects' in probe:
+                                fmt = "scene"
                             elif _detect_cocostudio(probe):
                                 fmt = "ui"
                         except (json.JSONDecodeError, ValueError):
@@ -2609,10 +2988,12 @@ class KHUxExplorer(QMainWindow):
         self._anim_frame_label.setVisible(False)
         if hasattr(self, '_anim_timer') and self._anim_timer.isActive():
             self._anim_timer.stop()
+        if hasattr(self, '_scene_anim_timer') and self._scene_anim_timer.isActive():
+            self._scene_anim_timer.stop()
         self._anim_playing = False
         self._anim_sprites = {}
         self._anim_bg = None
-        self._anim_cache = {}
+        self._scene_obj = None
         self._right_notebook.setTabVisible(self._preview_controls_tab_idx, False)
         self._zoom_level = 1.0
         self._zoom_label.setText("100%")
@@ -2655,18 +3036,25 @@ class KHUxExplorer(QMainWindow):
             self._preview_notebook.setCurrentIndex(0)
             self._zoom_in_btn.setEnabled(True)
             self._zoom_out_btn.setEnabled(True)
-        elif fmt == "ui":
+        elif fmt in ("scene", "ui"):
             self._show_text_preview(entry)
             try:
                 obj = json.loads(entry.data.decode("utf-8", errors="replace"))
                 root = _cs_get_root(obj)
                 if isinstance(root, dict):
                     self._populate_layer_list(root)
+                if fmt == "scene":
+                    self._scene_obj = obj
+                    self._populate_scene_anims(obj)
+                    self._render_scene_with_anims()
+                    self._on_scene_anim_changed()
+                else:
+                    self._clear_scene_anims()
+                    self._render_cocostudio_visual(entry)
             except Exception:
                 pass
             self._right_notebook.setTabVisible(self._preview_controls_tab_idx, True)
             self._right_notebook.setCurrentIndex(self._preview_controls_tab_idx)
-            self._render_cocostudio_visual(entry)
             self._preview_stack.setCurrentIndex(0)
             self._preview_notebook.setCurrentIndex(0)
             self._zoom_in_btn.setEnabled(True)
@@ -2943,9 +3331,6 @@ class KHUxExplorer(QMainWindow):
         if not _detect_cocostudio(obj):
             return False
 
-        if 'gameobjects' in obj and 'widgetTree' not in obj:
-            return self._render_scene_composite(obj)
-
         root = _cs_get_root(obj)
         if not isinstance(root, dict):
             return False
@@ -3034,17 +3419,20 @@ class KHUxExplorer(QMainWindow):
         widget_idx = _counter[0]
         _counter[0] += 1
 
+        x, y, w, h, ax, ay, tex_path, cn, nm, s9, s9x, s9y, s9w, s9h = _cs_widget_props(node)
+        anchor_wx = px + x
+        anchor_wy = py + y
+
         opts_vis = node.get('options', node)
-        if not show_hidden and not opts_vis.get('visible', True):
+        is_json_hidden = not opts_vis.get('visible', True)
+
+        if is_json_hidden and not show_hidden:
             for child in node.get('children', []):
-                self._cs_render_node(canvas, child, px, py, show_hidden, _counter)
+                self._cs_render_node(canvas, child, anchor_wx, anchor_wy, show_hidden, _counter)
             return False
 
         layer_vis = self._get_layer_visibility()
         if layer_vis and widget_idx in layer_vis and not layer_vis[widget_idx]:
-            x, y, w, h, ax, ay, *_ = _cs_widget_props(node)
-            anchor_wx = px + x
-            anchor_wy = py + y
             for child in node.get('children', []):
                 self._cs_render_node(canvas, child, anchor_wx, anchor_wy, show_hidden, _counter)
             return False
@@ -3052,11 +3440,6 @@ class KHUxExplorer(QMainWindow):
         draw_images = self._draw_images_cb.isChecked() if hasattr(self, '_draw_images_cb') else True
         draw_text = self._draw_text_cb.isChecked() if hasattr(self, '_draw_text_cb') else True
         draw_outlines = self._draw_outlines_cb.isChecked() if hasattr(self, '_draw_outlines_cb') else True
-
-        x, y, w, h, ax, ay, tex_path, cn, nm, s9, s9x, s9y, s9w, s9h = _cs_widget_props(node)
-
-        anchor_wx = px + x
-        anchor_wy = py + y
         bl_x = anchor_wx - w * ax
         bl_y = anchor_wy - h * ay
         pil_x = int(bl_x)
