@@ -358,6 +358,42 @@ def _cs_bounding_box(node, px=0, py=0, show_hidden=False):
     return (min_x, min_y, max_x, max_y)
 
 
+def _parse_plist_frames(plist_data: str) -> list:
+    """Parse a CocoStudio plist atlas and return list of (name, x, y, w, h)."""
+    import xml.etree.ElementTree as _ET
+    root = _ET.fromstring(plist_data)
+    top_dict = root.find("dict")
+    if top_dict is None:
+        return []
+    top_children = list(top_dict)
+    frames_dict = None
+    for i, child in enumerate(top_children):
+        if child.tag == "key" and child.text == "frames" and i + 1 < len(top_children):
+            frames_dict = top_children[i + 1]
+            break
+    if frames_dict is None:
+        return []
+    children = list(frames_dict)
+    result = []
+    for i in range(0, len(children), 2):
+        if i + 1 >= len(children) or children[i].tag != "key":
+            continue
+        fname = children[i].text
+        fd = children[i + 1]
+        props = {}
+        fc = list(fd)
+        for j in range(0, len(fc), 2):
+            if j + 1 < len(fc) and fc[j].tag == "key":
+                v = fc[j + 1]
+                if v.tag == "integer":
+                    props[fc[j].text] = int(v.text)
+                elif v.tag == "real":
+                    props[fc[j].text] = float(v.text)
+        result.append((fname, props.get("x", 0), props.get("y", 0),
+                        props.get("width", 0), props.get("height", 0)))
+    return result
+
+
 def _scale9_resize(img, tw, th, cx, cy, cw, ch):
     """9-slice scale: corners fixed, edges stretch one axis, center stretches both."""
     sw, sh = img.size
@@ -466,12 +502,14 @@ class ImagePreviewWidget(QScrollArea):
     """Scrollable, zoomable image preview with checkerboard transparency background."""
 
     zoom_changed = pyqtSignal(float)
+    double_clicked = pyqtSignal(int, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWidgetResizable(False)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet(f"background-color: {COLORS['bg_alt']}; border: none;")
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self._label = QLabel()
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -573,6 +611,18 @@ class ImagePreviewWidget(QScrollArea):
         super().resizeEvent(event)
         if self._pixmap:
             self._update_display()
+
+    def mouseDoubleClickEvent(self, event):
+        if self._pixmap and event.button() == Qt.MouseButton.LeftButton:
+            pos = self._label.mapFrom(self.viewport(), event.position().toPoint())
+            self.double_clicked.emit(int(pos.x()), int(pos.y()))
+        super().mouseDoubleClickEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Escape):
+            self.double_clicked.emit(-1, event.key())
+        else:
+            super().keyPressEvent(event)
 
     def show_error(self, text: str):
         self._pixmap = None
@@ -1206,6 +1256,24 @@ class KHUxExplorer(QMainWindow):
         self._zoom_out_btn.clicked.connect(self._zoom_out)
         preview_toolbar.addWidget(self._zoom_out_btn)
 
+        self._plist_prev_btn = QPushButton("<")
+        self._plist_prev_btn.setFixedWidth(28)
+        self._plist_prev_btn.setVisible(False)
+        self._plist_prev_btn.clicked.connect(lambda: self._on_preview_interact(-1, Qt.Key.Key_Left))
+        preview_toolbar.addWidget(self._plist_prev_btn)
+
+        self._plist_grid_btn = QPushButton("Grid")
+        self._plist_grid_btn.setFixedWidth(40)
+        self._plist_grid_btn.setVisible(False)
+        self._plist_grid_btn.clicked.connect(lambda: self._on_preview_interact(-1, Qt.Key.Key_Escape))
+        preview_toolbar.addWidget(self._plist_grid_btn)
+
+        self._plist_next_btn = QPushButton(">")
+        self._plist_next_btn.setFixedWidth(28)
+        self._plist_next_btn.setVisible(False)
+        self._plist_next_btn.clicked.connect(lambda: self._on_preview_interact(-1, Qt.Key.Key_Right))
+        preview_toolbar.addWidget(self._plist_next_btn)
+
         from PyQt6.QtWidgets import QCheckBox
         self._show_hidden_cb = QCheckBox("Show Hidden")
         self._show_hidden_cb.setChecked(False)
@@ -1228,6 +1296,10 @@ class KHUxExplorer(QMainWindow):
         self._preview_stack = QStackedWidget()
         self._image_preview = ImagePreviewWidget()
         self._image_preview.zoom_changed.connect(self._on_zoom_changed)
+        self._image_preview.double_clicked.connect(self._on_preview_interact)
+        self._plist_sprites = []
+        self._plist_atlas = None
+        self._plist_sprite_idx = -1
         self._audio_player = AudioPlayerWidget()
         self._preview_stack.addWidget(self._image_preview)   # index 0
         self._preview_stack.addWidget(self._audio_player)    # index 1
@@ -1295,6 +1367,37 @@ class KHUxExplorer(QMainWindow):
 
         quit_shortcut = QShortcut(QKeySequence("Ctrl+Q"), self)
         quit_shortcut.activated.connect(self.close)
+
+    def _on_preview_interact(self, x: int, y: int):
+        if not self._plist_sprites:
+            return
+        if x == -1:
+            key_val = y
+            if key_val == Qt.Key.Key_Escape:
+                self._plist_sprite_idx = -1
+                self._render_plist_grid()
+            elif key_val == Qt.Key.Key_Left and self._plist_sprite_idx >= 0:
+                self._render_plist_sprite_detail(max(0, self._plist_sprite_idx - 1))
+            elif key_val == Qt.Key.Key_Right:
+                nxt = self._plist_sprite_idx + 1 if self._plist_sprite_idx >= 0 else 0
+                if nxt < len(self._plist_sprites):
+                    self._render_plist_sprite_detail(nxt)
+            return
+        if self._plist_sprite_idx >= 0:
+            self._plist_sprite_idx = -1
+            self._render_plist_grid()
+            return
+        cols = getattr(self, '_plist_grid_cols', 1)
+        cw, ch = getattr(self, '_plist_grid_cell', (100, 100))
+        title_h = getattr(self, '_plist_grid_title_h', 24)
+        pad = getattr(self, '_plist_grid_padding', 10)
+        col = (x - pad) // cw
+        row = (y - title_h - pad) // ch
+        if col < 0 or row < 0 or col >= cols:
+            return
+        idx = row * cols + col
+        if 0 <= idx < len(self._plist_sprites):
+            self._render_plist_sprite_detail(idx)
 
     def _on_show_hidden_toggled(self, checked: bool):
         if self.current_entry:
@@ -2038,6 +2141,12 @@ class KHUxExplorer(QMainWindow):
         self._preview_text.clear()
         self._preview_hex.clear()
         self._current_pil_image = None
+        self._plist_sprites = []
+        self._plist_atlas = None
+        self._plist_sprite_idx = -1
+        self._plist_prev_btn.setVisible(False)
+        self._plist_grid_btn.setVisible(False)
+        self._plist_next_btn.setVisible(False)
         self._zoom_level = 1.0
         self._zoom_label.setText("100%")
 
@@ -2079,7 +2188,18 @@ class KHUxExplorer(QMainWindow):
             self._preview_notebook.setCurrentIndex(0)
             self._zoom_in_btn.setEnabled(True)
             self._zoom_out_btn.setEnabled(True)
-        elif fmt in ("plist", "json") or self._is_text_data(entry.data):
+        elif fmt == "plist":
+            self._show_plist_text_preview(entry)
+            if self._render_plist_visual(entry):
+                self._preview_stack.setCurrentIndex(0)
+                self._preview_notebook.setCurrentIndex(0)
+                self._zoom_in_btn.setEnabled(True)
+                self._zoom_out_btn.setEnabled(True)
+            else:
+                self._preview_notebook.setCurrentIndex(1)
+                self._zoom_in_btn.setEnabled(False)
+                self._zoom_out_btn.setEnabled(False)
+        elif fmt in ("json",) or self._is_text_data(entry.data):
             self._show_text_preview(entry)
             if self._render_cocostudio_visual(entry):
                 self._preview_stack.setCurrentIndex(0)
@@ -2125,6 +2245,130 @@ class KHUxExplorer(QMainWindow):
         if e:
             return e
         return None
+
+    def _render_plist_visual(self, entry: BGADEntry) -> bool:
+        """Render plist sprite atlas as a grid of cropped sprites."""
+        if not HAS_PIL or not HAS_BTF:
+            return False
+        try:
+            plist_data = entry.data.decode("utf-8-sig")
+            frames = _parse_plist_frames(plist_data)
+        except Exception:
+            return False
+        if not frames:
+            return False
+        png_name = entry.name.rsplit(".", 1)[0] + ".png"
+        png_entry = self._find_entry(png_name)
+        if not png_entry or len(png_entry.data) < 4 or png_entry.data[:4] != b'\x89BTF':
+            return False
+        try:
+            atlas = KHUxBTF.from_bytes(png_entry.data).decode(use_canvas=True)
+        except Exception:
+            return False
+
+        padding, label_h, max_thumb = 10, 14, 128
+        sprites = []
+        for name, x, y, w, h in frames:
+            if w <= 0 or h <= 0:
+                continue
+            sprite = atlas.crop((x, y, x + w, y + h))
+            sprites.append((name, sprite, x, y, w, h))
+        if not sprites:
+            return False
+
+        self._plist_sprites = sprites
+        self._plist_atlas = atlas
+        self._plist_sprite_idx = -1
+        self._render_plist_grid()
+        return True
+
+    def _plist_canvas_size(self):
+        """Get the visible area of the preview widget for canvas sizing."""
+        vp = self._image_preview.viewport().size()
+        return max(vp.width(), 400), max(vp.height(), 300)
+
+    def _render_plist_grid(self):
+        """Render the sprite grid view for the current plist."""
+        sprites = self._plist_sprites
+        atlas = self._plist_atlas
+        canvas_w, canvas_h = self._plist_canvas_size()
+        padding, label_h, max_thumb = 10, 14, 128
+        title_h = 28
+
+        thumbs = []
+        for name, sprite, ax, ay, ow, oh in sprites:
+            s = min(max_thumb / max(ow, 1), max_thumb / max(oh, 1), 1.0)
+            thumb = sprite.resize((max(1, int(ow * s)), max(1, int(oh * s))), Image.LANCZOS) if s < 1.0 else sprite
+            thumbs.append((name, thumb, ow, oh))
+
+        cell_w = max(t.width for _, t, _, _ in thumbs) + padding * 2
+        cell_h = max(t.height for _, t, _, _ in thumbs) + padding * 2 + label_h
+        cols = max(1, (canvas_w - padding) // cell_w)
+        rows = (len(thumbs) + cols - 1) // cols
+        content_h = rows * cell_h + padding + title_h
+        canvas_h = max(canvas_h, content_h)
+
+        canvas = Image.new("RGBA", (canvas_w, canvas_h), (30, 30, 30, 255))
+        draw = ImageDraw.Draw(canvas)
+        draw.text((padding, 6),
+                  f"{len(sprites)} sprites from {atlas.size[0]}x{atlas.size[1]} atlas (double-click to inspect)",
+                  fill=(160, 160, 160))
+        for i, (name, thumb, ow, oh) in enumerate(thumbs):
+            cx = (i % cols) * cell_w + padding
+            cy = (i // cols) * cell_h + padding + title_h
+            draw.rectangle([cx, cy, cx + cell_w - 1, cy + cell_h - 1],
+                            fill=(45, 45, 48), outline=(80, 80, 80))
+            canvas.alpha_composite(thumb,
+                                   (cx + (cell_w - thumb.width) // 2, cy + padding))
+            short_name = name.split(".")[0]
+            if len(short_name) > cell_w // 7:
+                short_name = short_name[:cell_w // 7 - 1] + ".."
+            draw.text((cx + 3, cy + cell_h - label_h), short_name, fill=(130, 130, 130))
+
+        self._plist_grid_cols = cols
+        self._plist_grid_cell = (cell_w, cell_h)
+        self._plist_grid_title_h = title_h
+        self._plist_grid_padding = padding
+        self._current_pil_image = canvas
+        self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas))
+        self._plist_prev_btn.setVisible(False)
+        self._plist_grid_btn.setVisible(False)
+        self._plist_next_btn.setVisible(False)
+
+    def _render_plist_sprite_detail(self, idx):
+        """Render a single sprite at full size centered in the viewport."""
+        sprites = self._plist_sprites
+        atlas = self._plist_atlas
+        if idx < 0 or idx >= len(sprites):
+            return
+        self._plist_sprite_idx = idx
+        name, sprite, sx, sy, ow, oh = sprites[idx]
+        canvas_w, canvas_h = self._plist_canvas_size()
+
+        canvas = Image.new("RGBA", (canvas_w, canvas_h), (30, 30, 30, 255))
+        draw = ImageDraw.Draw(canvas)
+
+        ix = (canvas_w - ow) // 2
+        iy = (canvas_h - oh) // 2
+        cell = 8
+        for cy in range(max(0, iy), min(canvas_h, iy + oh)):
+            for cx in range(max(0, ix), min(canvas_w, ix + ow)):
+                if ((cx - ix) // cell + (cy - iy) // cell) % 2:
+                    draw.point((cx, cy), fill=(50, 50, 50))
+        if 0 <= ix < canvas_w and 0 <= iy < canvas_h:
+            canvas.alpha_composite(sprite, (max(0, ix), max(0, iy)))
+        draw.rectangle([ix - 1, iy - 1, ix + ow, iy + oh], outline=(80, 80, 80))
+
+        draw.text((10, 10), f"[{idx + 1}/{len(sprites)}]  {name}", fill=(220, 220, 220))
+        draw.text((10, canvas_h - 25),
+                  f"Size: {ow}x{oh}   Atlas: ({sx}, {sy})   ← prev  |  next →  |  ESC = grid",
+                  fill=(130, 130, 130))
+
+        self._current_pil_image = canvas
+        self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas))
+        self._plist_prev_btn.setVisible(idx > 0)
+        self._plist_grid_btn.setVisible(True)
+        self._plist_next_btn.setVisible(idx < len(sprites) - 1)
 
     def _render_lwf_visual(self, entry: BGADEntry) -> bool:
         """Render LWF referenced textures as a visual grid in the Preview tab."""
@@ -2577,6 +2821,35 @@ class KHUxExplorer(QMainWindow):
         return obj
 
     @staticmethod
+    @staticmethod
+    def _xml_to_html(text: str) -> str:
+        """Convert XML text to syntax-highlighted HTML."""
+        import html as _html
+        import re as _re
+        lines = text.split("\n")
+        html_lines = []
+        for line in lines:
+            escaped = _html.escape(line)
+            # Highlight tags
+            escaped = _re.sub(
+                r'(&lt;/?)(\w+)',
+                r'\1<span style="color:#569CD6">\2</span>', escaped)
+            # Highlight attribute names
+            escaped = _re.sub(
+                r' (\w+)(=)',
+                r' <span style="color:#9CDCFE">\1</span>\2', escaped)
+            # Highlight attribute values
+            escaped = _re.sub(
+                r'(&quot;[^&]*&quot;|"[^"]*")',
+                r'<span style="color:#CE9178">\1</span>', escaped)
+            # Highlight text content between tags
+            escaped = _re.sub(
+                r'(&gt;)([^<&]+)(&lt;)',
+                r'\1<span style="color:#D4D4D4">\2</span>\3', escaped)
+            html_lines.append(escaped)
+        return "<br>".join(html_lines)
+
+    @staticmethod
     def _json_to_html(text: str) -> str:
         """Convert pretty-printed JSON text to syntax-highlighted HTML."""
         import html as _html
@@ -2632,6 +2905,26 @@ class KHUxExplorer(QMainWindow):
                     i += 1
             html_lines.append(indent + "".join(result_parts))
         return "<br>".join(html_lines)
+
+    def _show_plist_text_preview(self, entry: BGADEntry):
+        """Show plist as pretty-printed, syntax-highlighted XML."""
+        try:
+            import xml.dom.minidom
+            raw = entry.data.decode("utf-8-sig", errors="replace")
+            dom = xml.dom.minidom.parseString(entry.data)
+            pretty = dom.toprettyxml(indent="  ")
+            lines = pretty.split("\n")
+            if lines and lines[0].startswith("<?xml"):
+                lines = lines[1:]
+            pretty = "\n".join(lines)
+            html = self._xml_to_html(pretty)
+            self._preview_text.setHtml(
+                f'<pre style="font-family:Consolas;font-size:10pt;color:{COLORS["fg"]};'
+                f'background-color:{COLORS["text_bg"]};margin:0;white-space:pre-wrap;">'
+                f'{html}</pre>'
+            )
+        except Exception:
+            self._preview_text.setPlainText(entry.data.decode("utf-8-sig", errors="replace"))
 
     def _show_text_preview(self, entry: BGADEntry):
         try:
