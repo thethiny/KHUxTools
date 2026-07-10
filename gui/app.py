@@ -48,7 +48,7 @@ except ImportError:
     HAS_AVATAR = False
 
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageChops, ImageDraw, ImageFont
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
@@ -105,6 +105,7 @@ FORMAT_COLORS = {
     "plist":   "#dcdcaa",
     "json":    "#dcdcaa",
     "ui":      "#4fc1e9",
+    "anim":    "#e6c07b",
     "text":    "#d4d4d4",
     "ttf":     "#e0a050",
     "stg":     "#569cd6",
@@ -131,6 +132,7 @@ FORMAT_BADGES = {
     "cls":     "[CLS]",
     "chp":     "[CHP]",
     "ui":      "[UI]",
+    "anim":    "[ANIM]",
     "index":   "[IDX]",
     "unknown": "[???]",
 }
@@ -394,6 +396,146 @@ def _parse_plist_frames(plist_data: str) -> list:
     return result
 
 
+def _parse_exportjson(obj):
+    """Parse an ExportJson and return (armature, animation, texture_data, config_plists, config_pngs)."""
+    armature = obj.get('armature_data', [{}])[0] if obj.get('armature_data') else {}
+    anim = obj.get('animation_data', [{}])[0] if obj.get('animation_data') else {}
+    return (armature, anim, obj.get('texture_data', []),
+            obj.get('config_file_path', []), obj.get('config_png_path', []))
+
+
+def _detect_exportjson(obj) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    return 'armature_data' in obj and 'animation_data' in obj and 'config_file_path' in obj
+
+
+def _interp_bone_keyframe(mov_bone, frame_idx):
+    """Interpolate a bone's keyframe data at a given frame. Returns (x, y, cX, cY, dI, alpha, r, g, b) or None."""
+    frames = mov_bone.get('frame_data', [])
+    if not frames:
+        return None
+    prev_kf = frames[0]
+    next_kf = frames[0]
+    for i, kf in enumerate(frames):
+        if kf['fi'] <= frame_idx:
+            prev_kf = kf
+            next_kf = frames[i + 1] if i + 1 < len(frames) else kf
+        else:
+            next_kf = kf
+            break
+    span = next_kf['fi'] - prev_kf['fi']
+    t = max(0.0, min(1.0, (frame_idx - prev_kf['fi']) / span)) if span > 0 else 0
+    def _lerp(a, b):
+        return a + (b - a) * t
+    if prev_kf.get('tweenFrame', True) and span > 0:
+        ix = _lerp(prev_kf.get('x', 0), next_kf.get('x', 0))
+        iy = _lerp(prev_kf.get('y', 0), next_kf.get('y', 0))
+        icx = _lerp(prev_kf.get('cX', 1), next_kf.get('cX', 1))
+        icy = _lerp(prev_kf.get('cY', 1), next_kf.get('cY', 1))
+        pc = prev_kf.get('color', {'a': 255, 'r': 255, 'g': 255, 'b': 255})
+        nc = next_kf.get('color', {'a': 255, 'r': 255, 'g': 255, 'b': 255})
+        ia = int(_lerp(pc.get('a', 255), nc.get('a', 255)))
+        ir = int(_lerp(pc.get('r', 255), nc.get('r', 255)))
+        ig = int(_lerp(pc.get('g', 255), nc.get('g', 255)))
+        ib = int(_lerp(pc.get('b', 255), nc.get('b', 255)))
+    else:
+        ix, iy = prev_kf.get('x', 0), prev_kf.get('y', 0)
+        icx, icy = prev_kf.get('cX', 1), prev_kf.get('cY', 1)
+        c_ = prev_kf.get('color', {'a': 255, 'r': 255, 'g': 255, 'b': 255})
+        ia = c_.get('a', 255)
+        ir, ig, ib = c_.get('r', 255), c_.get('g', 255), c_.get('b', 255)
+    di = prev_kf.get('dI', 0)
+    return (ix, iy, icx, icy, di, ia, ir, ig, ib)
+
+
+def _render_anim_frame(anim_data, armature, sprites, frame_idx, canvas_size=(200, 200)):
+    """Render a single frame of an ExportJson armature animation."""
+    if not anim_data.get('mov_data'):
+        return Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+    canvas = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+    cx, cy = canvas_size[0] // 2, canvas_size[1] // 2
+    movement = anim_data['mov_data'][0]
+    bone_map = {b['name']: b for b in armature.get('bone_data', [])}
+    mov_bone_map = {mb['name']: mb for mb in movement.get('mov_bone_data', [])}
+
+    bone_world = {}
+
+    def get_bone_world(bone_name):
+        if bone_name in bone_world:
+            return bone_world[bone_name]
+        bone = bone_map.get(bone_name)
+        if not bone:
+            bone_world[bone_name] = (0, 0)
+            return (0, 0)
+        bx, by = bone.get('x', 0), bone.get('y', 0)
+        mb = mov_bone_map.get(bone_name)
+        if mb:
+            interp = _interp_bone_keyframe(mb, frame_idx)
+            if interp:
+                bx += interp[0]
+                by += interp[1]
+        parent = bone.get('parent', '')
+        if parent:
+            px, py = get_bone_world(parent)
+            bx += px
+            by += py
+        bone_world[bone_name] = (bx, by)
+        return (bx, by)
+
+    render_list = []
+    for mov_bone in movement.get('mov_bone_data', []):
+        bone = bone_map.get(mov_bone['name'])
+        if not bone:
+            continue
+        interp = _interp_bone_keyframe(mov_bone, frame_idx)
+        if not interp:
+            continue
+        _, _, icx, icy, di, ia, ir, ig, ib = interp
+
+        display_data = bone.get('display_data', [])
+        if di < 0 or di >= len(display_data):
+            continue
+        sprite_name = display_data[di]['name']
+        sprite_img = sprites.get(sprite_name)
+        if sprite_img is None:
+            continue
+
+        skin = display_data[di].get('skin_data', [{}])[0]
+        wx, wy = get_bone_world(mov_bone['name'])
+        final_x = wx + skin.get('x', 0)
+        final_y = -(wy + skin.get('y', 0))
+        bone_z = bone.get('z', 0)
+        render_list.append((bone_z, sprite_img, final_x, final_y,
+                            abs(icx), abs(icy), icx < 0, icy < 0, ia, ir, ig, ib))
+
+    render_list.sort(key=lambda r: r[0])
+    for z, sprite, px, py, sx, sy, flip_h, flip_v, alpha, r, g, b in render_list:
+        img = sprite.copy()
+        w, h = img.size
+        nw, nh = max(1, int(w * sx)), max(1, int(h * sy))
+        if (nw, nh) != (w, h):
+            img = img.resize((nw, nh), Image.LANCZOS)
+        if flip_h:
+            img = img.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        if flip_v:
+            img = img.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+        if alpha < 255 or r < 255 or g < 255 or b < 255:
+            img = ImageChops.multiply(img, Image.new("RGBA", img.size, (r, g, b, alpha)))
+        dx = cx + int(px) - nw // 2
+        dy = cy + int(py) - nh // 2
+        src_x, src_y = 0, 0
+        if dx < 0:
+            src_x = -dx; dx = 0
+        if dy < 0:
+            src_y = -dy; dy = 0
+        cw = min(img.width - src_x, canvas.width - dx)
+        ch = min(img.height - src_y, canvas.height - dy)
+        if cw > 0 and ch > 0:
+            canvas.alpha_composite(img.crop((src_x, src_y, src_x + cw, src_y + ch)), (dx, dy))
+    return canvas
+
+
 def _scale9_resize(img, tw, th, cx, cy, cw, ch):
     """9-slice scale: corners fixed, edges stretch one axis, center stretches both."""
     sw, sh = img.size
@@ -520,12 +662,14 @@ class ImagePreviewWidget(QScrollArea):
         self._zoom: float = 1.0
         self._original_size: QSize = QSize(0, 0)
         self._size_text: str = ""
+        self._pan_start = None
 
-    def set_pixmap(self, pixmap: QPixmap):
+    def set_pixmap(self, pixmap: QPixmap, keep_zoom: bool = False):
         self._pixmap = pixmap
         self._original_size = pixmap.size()
         self._size_text = f"{pixmap.width()} x {pixmap.height()}"
-        self._zoom = 1.0
+        if not keep_zoom:
+            self._zoom = 1.0
         self._update_display()
 
     def clear_image(self):
@@ -551,7 +695,7 @@ class ImagePreviewWidget(QScrollArea):
         return self._size_text
 
     def wheelEvent(self, event: QWheelEvent):
-        if event.modifiers() & Qt.KeyboardModifier.ControlModifier and self._pixmap:
+        if self._pixmap:
             delta = event.angleDelta().y()
             if delta > 0:
                 self.zoom_in()
@@ -612,7 +756,30 @@ class ImagePreviewWidget(QScrollArea):
         if self._pixmap:
             self._update_display()
 
+    def mousePressEvent(self, event):
+        if event.button() in (Qt.MouseButton.MiddleButton, Qt.MouseButton.LeftButton):
+            self._pan_start = event.position().toPoint()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._pan_start is not None:
+            delta = event.position().toPoint() - self._pan_start
+            self._pan_start = event.position().toPoint()
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._pan_start is not None:
+            self._pan_start = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+        super().mouseReleaseEvent(event)
+
     def mouseDoubleClickEvent(self, event):
+        self._pan_start = None
         if self._pixmap and event.button() == Qt.MouseButton.LeftButton:
             pos = self._label.mapFrom(self.viewport(), event.position().toPoint())
             self.double_clicked.emit(int(pos.x()), int(pos.y()))
@@ -1256,6 +1423,31 @@ class KHUxExplorer(QMainWindow):
         self._zoom_out_btn.clicked.connect(self._zoom_out)
         preview_toolbar.addWidget(self._zoom_out_btn)
 
+        from PyQt6.QtWidgets import QComboBox
+        self._anim_mov_combo = QComboBox()
+        self._anim_mov_combo.setFixedWidth(140)
+        self._anim_mov_combo.setVisible(False)
+        self._anim_mov_combo.currentIndexChanged.connect(self._anim_change_movement)
+        preview_toolbar.addWidget(self._anim_mov_combo)
+
+        self._anim_play_btn = QPushButton("Play")
+        self._anim_play_btn.setFixedWidth(50)
+        self._anim_play_btn.setVisible(False)
+        self._anim_play_btn.clicked.connect(self._anim_toggle_play)
+        preview_toolbar.addWidget(self._anim_play_btn)
+
+        from PyQt6.QtWidgets import QSlider
+        self._anim_slider = QSlider(Qt.Orientation.Horizontal)
+        self._anim_slider.setFixedWidth(120)
+        self._anim_slider.setVisible(False)
+        self._anim_slider.valueChanged.connect(self._anim_seek)
+        preview_toolbar.addWidget(self._anim_slider)
+
+        self._anim_frame_label = QLabel("")
+        self._anim_frame_label.setStyleSheet(f"color: {COLORS['fg_dim']}; font-size: 9pt;")
+        self._anim_frame_label.setVisible(False)
+        preview_toolbar.addWidget(self._anim_frame_label)
+
         self._plist_prev_btn = QPushButton("<")
         self._plist_prev_btn.setFixedWidth(28)
         self._plist_prev_btn.setVisible(False)
@@ -1273,13 +1465,6 @@ class KHUxExplorer(QMainWindow):
         self._plist_next_btn.setVisible(False)
         self._plist_next_btn.clicked.connect(lambda: self._on_preview_interact(-1, Qt.Key.Key_Right))
         preview_toolbar.addWidget(self._plist_next_btn)
-
-        from PyQt6.QtWidgets import QCheckBox
-        self._show_hidden_cb = QCheckBox("Show Hidden")
-        self._show_hidden_cb.setChecked(False)
-        self._show_hidden_cb.setStyleSheet(f"color: {COLORS['fg_dim']}; font-size: 9pt;")
-        self._show_hidden_cb.toggled.connect(self._on_show_hidden_toggled)
-        preview_toolbar.addWidget(self._show_hidden_cb)
 
         self._export_btn = QPushButton("Export")
         self._export_btn.setEnabled(False)
@@ -1353,6 +1538,16 @@ class KHUxExplorer(QMainWindow):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(4)
+
+        self._show_hidden_cb = QCheckBox("Show Hidden")
+        self._show_hidden_cb.setChecked(True)
+        self._show_hidden_cb.toggled.connect(self._on_show_hidden_toggled)
+        layout.addWidget(self._show_hidden_cb)
+
+        sep0 = QFrame()
+        sep0.setFrameShape(QFrame.Shape.HLine)
+        sep0.setStyleSheet(f"color: {COLORS['border']};")
+        layout.addWidget(sep0)
 
         # Draw toggles
         toggles_label = QLabel("Draw Options")
@@ -1530,6 +1725,134 @@ class KHUxExplorer(QMainWindow):
         if 0 <= idx < len(self._plist_sprites):
             self._render_plist_sprite_detail(idx)
 
+    def _init_anim_player(self, entry: BGADEntry):
+        """Initialize animation player for an ExportJson entry."""
+        try:
+            obj = json.loads(entry.data.decode("utf-8", errors="replace"))
+        except (json.JSONDecodeError, ValueError):
+            return
+        armature, anim, tex_data, plists, pngs = _parse_exportjson(obj)
+        if not anim.get('mov_data'):
+            return
+
+        sprites = {}
+        if HAS_BTF:
+            for plist_path, png_path in zip(plists, pngs):
+                pe = self._find_entry(plist_path)
+                pnge = self._find_entry(png_path)
+                if pe and pnge and len(pnge.data) >= 4 and pnge.data[:4] == b'\x89BTF':
+                    try:
+                        frames = _parse_plist_frames(pe.data.decode("utf-8-sig"))
+                        atlas = KHUxBTF.from_bytes(pnge.data).decode(use_canvas=True)
+                        for name, x, y, w, h in frames:
+                            if w > 0 and h > 0:
+                                sprites[name] = atlas.crop((x, y, x + w, y + h))
+                    except Exception:
+                        pass
+
+        self._anim_armature = armature
+        self._anim_data = anim
+        self._anim_sprites = sprites
+        movs = anim.get('mov_data', [])
+        best_idx = 0
+        best_bones = 0
+        self._anim_mov_combo.blockSignals(True)
+        self._anim_mov_combo.clear()
+        for i, mov in enumerate(movs):
+            bone_count = len(mov.get('mov_bone_data', []))
+            label = f"{mov.get('name', f'mov_{i}')} ({mov.get('dr', 0)}f, {bone_count}b)"
+            self._anim_mov_combo.addItem(label)
+            if bone_count > best_bones:
+                best_bones = bone_count
+                best_idx = i
+        self._anim_mov_combo.setCurrentIndex(best_idx)
+        self._anim_mov_combo.blockSignals(False)
+
+        self._anim_movement_idx = best_idx
+        self._anim_dr = movs[best_idx].get('dr', 1)
+        self._anim_loop = movs[best_idx].get('lp', False)
+        self._anim_frame = 0
+        self._anim_playing = False
+
+        self._anim_slider.setRange(0, self._anim_dr - 1)
+        self._anim_slider.setValue(0)
+        self._anim_mov_combo.setVisible(len(movs) > 1)
+        self._anim_play_btn.setVisible(True)
+        self._anim_play_btn.setText("Play")
+        self._anim_slider.setVisible(True)
+        self._anim_frame_label.setVisible(True)
+
+        if not hasattr(self, '_anim_timer'):
+            self._anim_timer = QTimer(self)
+            self._anim_timer.timeout.connect(self._anim_tick)
+
+        self._anim_render_current()
+
+    def _anim_change_movement(self, idx):
+        if idx < 0 or not hasattr(self, '_anim_data'):
+            return
+        movs = self._anim_data.get('mov_data', [])
+        if idx >= len(movs):
+            return
+        self._anim_movement_idx = idx
+        self._anim_dr = movs[idx].get('dr', 1)
+        self._anim_loop = movs[idx].get('lp', False)
+        self._anim_frame = 0
+        self._anim_slider.setRange(0, self._anim_dr - 1)
+        self._anim_slider.setValue(0)
+        self._anim_bg = None
+        self._anim_cache = {}
+        self._anim_render_current()
+
+    def _anim_toggle_play(self):
+        if self._anim_playing:
+            self._anim_playing = False
+            self._anim_timer.stop()
+            self._anim_play_btn.setText("Play")
+        else:
+            self._anim_playing = True
+            self._anim_play_btn.setText("Pause")
+            self._anim_timer.start(17)
+
+    def _anim_tick(self):
+        self._anim_frame += 1
+        dr = self._anim_dr
+        if self._anim_frame >= dr:
+            if self._anim_loop:
+                self._anim_frame = 0
+            else:
+                self._anim_frame = dr - 1
+                self._anim_playing = False
+                self._anim_timer.stop()
+                self._anim_play_btn.setText("Play")
+        self._anim_slider.blockSignals(True)
+        self._anim_slider.setValue(self._anim_frame)
+        self._anim_slider.blockSignals(False)
+        self._anim_render_current()
+
+    def _anim_seek(self, value):
+        self._anim_frame = value
+        self._anim_render_current()
+
+    def _anim_render_current(self):
+        if not hasattr(self, '_anim_bg') or self._anim_bg is None:
+            canvas_w, canvas_h = 960, 640
+            self._anim_bg = Image.new("RGBA", (canvas_w, canvas_h), (30, 30, 30, 255))
+            self._anim_canvas_size = (canvas_w, canvas_h)
+        canvas_w, canvas_h = self._anim_canvas_size
+        mov = self._anim_data['mov_data'][self._anim_movement_idx]
+        anim_single = {'mov_data': [mov]}
+        frame_img = _render_anim_frame(anim_single, self._anim_armature,
+                                        self._anim_sprites, self._anim_frame,
+                                        canvas_size=(canvas_w, canvas_h))
+        bg = self._anim_bg.copy()
+        bg.alpha_composite(frame_img, (0, 0))
+        self._current_pil_image = bg
+        self._image_preview.set_pixmap(_pil_image_to_qpixmap(bg), keep_zoom=True)
+        dr = self._anim_dr
+        loop_str = " loop" if self._anim_loop else ""
+        self._anim_frame_label.setText(f"{self._anim_frame}/{dr - 1}{loop_str}")
+
     def _on_show_hidden_toggled(self, checked: bool):
         if self.current_entry:
             self._show_preview(self.current_entry)
@@ -1635,7 +1958,9 @@ class KHUxExplorer(QMainWindow):
                     if fmt in ("json", "text") and len(e.data) > 20:
                         try:
                             probe = json.loads(e.data.decode("utf-8", errors="replace"))
-                            if _detect_cocostudio(probe):
+                            if _detect_exportjson(probe):
+                                fmt = "anim"
+                            elif _detect_cocostudio(probe):
                                 fmt = "ui"
                         except (json.JSONDecodeError, ValueError):
                             pass
@@ -2278,6 +2603,16 @@ class KHUxExplorer(QMainWindow):
         self._plist_prev_btn.setVisible(False)
         self._plist_grid_btn.setVisible(False)
         self._plist_next_btn.setVisible(False)
+        self._anim_mov_combo.setVisible(False)
+        self._anim_play_btn.setVisible(False)
+        self._anim_slider.setVisible(False)
+        self._anim_frame_label.setVisible(False)
+        if hasattr(self, '_anim_timer') and self._anim_timer.isActive():
+            self._anim_timer.stop()
+        self._anim_playing = False
+        self._anim_sprites = {}
+        self._anim_bg = None
+        self._anim_cache = {}
         self._right_notebook.setTabVisible(self._preview_controls_tab_idx, False)
         self._zoom_level = 1.0
         self._zoom_label.setText("100%")
@@ -2309,6 +2644,13 @@ class KHUxExplorer(QMainWindow):
         elif fmt == "lwf":
             self._show_lwf_preview(entry)
             self._render_lwf_visual(entry)
+            self._preview_stack.setCurrentIndex(0)
+            self._preview_notebook.setCurrentIndex(0)
+            self._zoom_in_btn.setEnabled(True)
+            self._zoom_out_btn.setEnabled(True)
+        elif fmt == "anim":
+            self._show_text_preview(entry)
+            self._init_anim_player(entry)
             self._preview_stack.setCurrentIndex(0)
             self._preview_notebook.setCurrentIndex(0)
             self._zoom_in_btn.setEnabled(True)
@@ -2477,27 +2819,32 @@ class KHUxExplorer(QMainWindow):
         self._plist_next_btn.setVisible(False)
 
     def _render_plist_sprite_detail(self, idx):
-        """Render a single sprite at full size centered in the viewport."""
+        """Render a single sprite at full size with checkerboard background."""
         sprites = self._plist_sprites
         atlas = self._plist_atlas
         if idx < 0 or idx >= len(sprites):
             return
         self._plist_sprite_idx = idx
         name, sprite, sx, sy, ow, oh = sprites[idx]
-        canvas_w, canvas_h = self._plist_canvas_size()
+
+        pad_top, pad_bottom = 30, 30
+        canvas_w = ow + 2
+        canvas_h = oh + pad_top + pad_bottom + 2
 
         canvas = Image.new("RGBA", (canvas_w, canvas_h), (30, 30, 30, 255))
         draw = ImageDraw.Draw(canvas)
 
-        ix = (canvas_w - ow) // 2
-        iy = (canvas_h - oh) // 2
-        cell = 8
-        for cy in range(max(0, iy), min(canvas_h, iy + oh)):
-            for cx in range(max(0, ix), min(canvas_w, ix + ow)):
-                if ((cx - ix) // cell + (cy - iy) // cell) % 2:
-                    draw.point((cx, cy), fill=(50, 50, 50))
-        if 0 <= ix < canvas_w and 0 <= iy < canvas_h:
-            canvas.alpha_composite(sprite, (max(0, ix), max(0, iy)))
+        ix = 1
+        iy = pad_top
+        cell = 16
+        c1, c2 = (42, 42, 42, 255), (55, 55, 55, 255)
+        checker = Image.new("RGBA", (ow, oh), c1)
+        for by in range(0, oh, cell):
+            for bx in range(0, ow, cell):
+                if (bx // cell + by // cell) % 2:
+                    checker.paste(Image.new("RGBA", (min(cell, ow - bx), min(cell, oh - by)), c2), (bx, by))
+        canvas.alpha_composite(checker, (ix, iy))
+        canvas.alpha_composite(sprite, (ix, iy))
         draw.rectangle([ix - 1, iy - 1, ix + ow, iy + oh], outline=(80, 80, 80))
 
         draw.text((10, 10), f"[{idx + 1}/{len(sprites)}]  {name}", fill=(220, 220, 220))
