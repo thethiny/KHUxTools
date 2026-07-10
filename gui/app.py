@@ -936,7 +936,7 @@ class FileLoaderWorker(QThread):
     """Loads a BGAD container in a background thread."""
     finished = pyqtSignal(object, list, str)  # (container, entries, path)
     error = pyqtSignal(str)
-    progress = pyqtSignal(str)
+    progress = pyqtSignal(str, int, int)  # (message, current, total)
 
     def __init__(self, path: str, parent=None):
         super().__init__(parent)
@@ -944,10 +944,16 @@ class FileLoaderWorker(QThread):
 
     def run(self):
         try:
-            self.progress.emit(f"Parsing {os.path.basename(self._path)}...")
+            self.progress.emit(f"Opening {os.path.basename(self._path)}...", 0, 0)
             container = KHUxBGADContainer(self._path)
-            self.progress.emit("Decrypting entries...")
-            entries = container.iter_entries()
+
+            def on_progress(count, pos, file_size):
+                pct = int(pos * 100 / file_size) if file_size > 0 else 0
+                self.progress.emit(f"Reading entries... {count} entries ({pct}%)", pos, file_size)
+
+            self.progress.emit("Reading entries...", 0, 0)
+            entries = container.iter_entries(progress_callback=on_progress)
+            self.progress.emit(f"Loaded {len(entries)} entries", len(entries), len(entries))
             self.finished.emit(container, entries, self._path)
         except Exception as e:
             self.error.emit(str(e))
@@ -2074,7 +2080,38 @@ class KHUxExplorer(QMainWindow):
         self._scene_playing_frame = max(0, getattr(self, '_scene_playing_frame', 0) - 1)
         self._scene_set_frame(self._scene_playing_frame)
 
+    def _scene_loop_point(self):
+        """Compute LCM of all looping animation durations — the frame where all loops sync to 0."""
+        from math import gcd
+        durations = []
+        for ctrl in self._scene_anim_controls:
+            if ctrl['mode_combo'].currentIndex() != 3:
+                continue
+            mov_idx = ctrl['mov_combo'].currentIndex()
+            movs = ctrl['anim_data'].get('mov_data', [])
+            if mov_idx < len(movs):
+                durations.append(movs[mov_idx].get('dr', 1))
+        if not durations:
+            return 0
+        lcm = durations[0]
+        for d in durations[1:]:
+            lcm = lcm * d // gcd(lcm, d)
+        return lcm
+
     def _scene_set_frame(self, frame):
+        loop_pt = self._scene_loop_point()
+        if loop_pt > 0 and frame >= loop_pt:
+            frame = frame % loop_pt
+            self._scene_playing_frame = frame
+        else:
+            max_dr = max((ctrl['anim_data'].get('mov_data', [{}])[ctrl['mov_combo'].currentIndex()].get('dr', 1)
+                          for ctrl in self._scene_anim_controls
+                          if ctrl['mode_combo'].currentIndex() != 0 and ctrl['anim_data'].get('mov_data')),
+                         default=1)
+            cap = max_dr * 5
+            if frame >= cap:
+                frame = cap
+                self._scene_playing_frame = cap
         for ctrl in self._scene_anim_controls:
             mode = ctrl['mode_combo'].currentIndex()
             if mode == 0:
@@ -2472,13 +2509,33 @@ class KHUxExplorer(QMainWindow):
         if magic not in (b"BGAD",):
             pass
 
+        from PyQt6.QtWidgets import QProgressDialog
+        self._load_progress = QProgressDialog("Opening file...", None, 0, 100, self)
+        self._load_progress.setWindowTitle("Loading")
+        self._load_progress.setMinimumDuration(0)
+        self._load_progress.setValue(0)
+        self._load_progress.show()
+
         self._loader = FileLoaderWorker(path)
-        self._loader.progress.connect(self._status_left.setText)
+        self._loader.progress.connect(self._on_load_progress)
         self._loader.error.connect(self._on_load_error)
         self._loader.finished.connect(self._on_load_finished)
         self._loader.start()
 
+    def _on_load_progress(self, msg: str, current: int, total: int):
+        if hasattr(self, '_load_progress') and self._load_progress:
+            self._load_progress.setLabelText(msg)
+            if total > 0:
+                self._load_progress.setMaximum(total)
+                self._load_progress.setValue(current)
+            else:
+                self._load_progress.setMaximum(0)
+        self._status_left.setText(msg)
+
     def _on_load_error(self, msg: str):
+        if hasattr(self, '_load_progress') and self._load_progress:
+            self._load_progress.close()
+            self._load_progress = None
         QMessageBox.critical(self, "Error", f"Failed to parse container:\n{msg}")
         self._status_left.setText("Ready")
         self._loader = None
@@ -2558,11 +2615,24 @@ class KHUxExplorer(QMainWindow):
         self._save_recent_files()
         self._rebuild_recent_menu()
 
+        if hasattr(self, '_load_progress') and self._load_progress:
+            self._load_progress.setLabelText(f"Classifying {len(entries)} entries...")
+            self._load_progress.setMaximum(0)
+            QApplication.processEvents()
+
         fname = os.path.basename(path)
         self._file_label.setText(fname)
         self._file_label.setStyleSheet(f"color: {COLORS['fg_bright']};")
 
+        if hasattr(self, '_load_progress') and self._load_progress:
+            self._load_progress.setLabelText(f"Building tree...")
+            QApplication.processEvents()
+
         self._populate_tree()
+
+        if hasattr(self, '_load_progress') and self._load_progress:
+            self._load_progress.close()
+            self._load_progress = None
 
         self._status_left.setText(f"Loaded {fname}")
         self._status_right.setText(f"{len(entries)} entries")

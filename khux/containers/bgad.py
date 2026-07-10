@@ -185,11 +185,17 @@ class KHUxBGADContainer(KHUxFile):
 
         return None
 
-    def iter_entries(self) -> List[BGADEntry]:
+    def iter_entries(self, progress_callback=None) -> List[BGADEntry]:
         if self._resolved_key is None and self.encryption_key is None:
             self._resolved_key = self._resolve_key()
 
         key = self._resolved_key or self.encryption_key
+        file_size = 0
+        if progress_callback:
+            pos = self.file_handle.tell()
+            self.file_handle.seek(0, 2)
+            file_size = self.file_handle.tell()
+            self.file_handle.seek(pos)
         entries = []
         while True:
             try:
@@ -197,6 +203,9 @@ class KHUxBGADContainer(KHUxFile):
                                 encryption_key=key)
                 entry = bgad.read_entry()
                 entries.append(entry)
+                if progress_callback and len(entries) % 100 == 0:
+                    pos = self.file_handle.tell()
+                    progress_callback(len(entries), pos, file_size)
             except (IOError, struct.error, ValueError):
                 break
         return entries
