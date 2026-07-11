@@ -3253,12 +3253,10 @@ class KHUxExplorer(QMainWindow):
             self._props_text.append_kv("Canvas Size", f"{hdr.canvas_width} x {hdr.canvas_height}")
             self._props_text.append_kv("Canvas Offset", f"({hdr.canvas_offset_x}, {hdr.canvas_offset_y})")
 
-            if hdr.image_format == hdr.FORMAT_RGBA:
-                fmt_str = "RGBA (0x{:06x})".format(hdr.image_format)
-            elif hdr.image_format == hdr.FORMAT_INDEXED:
-                fmt_str = "Indexed (0x{:06x})".format(hdr.image_format)
-            else:
-                fmt_str = f"0x{hdr.image_format:06x}"
+            parts = []
+            parts.append("indexed" if hdr.is_indexed else "RGBA")
+            parts.append("compressed" if hdr.is_compressed else "raw")
+            fmt_str = f"{' + '.join(parts)} (0x{hdr.image_format:06x})"
             self._props_text.append_kv("Image Format", fmt_str)
 
         except Exception as e:

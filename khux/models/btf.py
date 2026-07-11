@@ -9,7 +9,7 @@ class BTFHeader:
     skip: bytes           # 0x04  2 bytes
     unknown1: int         # 0x06  u32
     unknown2: int         # 0x0A  u32
-    image_format: int     # 0x0E  u32 (0x080000=RGBA, 0x090000=indexed)
+    image_format: int     # 0x0E  u32 (flags: bit 16 = indexed, bit 19 = compressed)
     unknown4: int         # 0x12  u32
     canvas_width: int     # 0x16  u16
     canvas_height: int    # 0x18  u16
@@ -22,8 +22,16 @@ class BTFHeader:
     _struct = struct.Struct(_fmt)
     _magic = b"\x89BTF"
 
-    FORMAT_RGBA = 0x080000
-    FORMAT_INDEXED = 0x090000
+    FLAG_INDEXED = 0x010000
+    FLAG_COMPRESSED = 0x080000
+
+    @property
+    def is_indexed(self) -> bool:
+        return bool(self.image_format & self.FLAG_INDEXED)
+
+    @property
+    def is_compressed(self) -> bool:
+        return bool(self.image_format & self.FLAG_COMPRESSED)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "BTFHeader":
