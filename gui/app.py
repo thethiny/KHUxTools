@@ -1872,6 +1872,7 @@ class KHUxExplorer(QMainWindow):
         self.tree.setUniformRowHeights(True)  # Performance for large trees
         self.tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
         self.tree.itemSelectionChanged.connect(self._on_tree_select)
+        self.tree.itemExpanded.connect(self._on_tree_item_expanded)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._on_tree_right_click)
         left_layout.addWidget(self.tree, 1)
@@ -3102,6 +3103,12 @@ class KHUxExplorer(QMainWindow):
     def _on_filter_changed(self, text: str):
         if self.entries:
             self._populate_tree(text)
+
+    def _on_tree_item_expanded(self, item: QTreeWidgetItem):
+        while item.childCount() == 1 and item.child(0).data(0, ROLE_ENTRY_NAME) is None:
+            child = item.child(0)
+            child.setExpanded(True)
+            item = child
 
     def _on_tree_select(self):
         items = self.tree.selectedItems()
