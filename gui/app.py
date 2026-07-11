@@ -276,6 +276,8 @@ def _parse_lwf_data(data: bytes) -> dict:
 
     info['_translates'] = _rs('translate', '<ff', ['x', 'y'])
     info['_matrices'] = _rs('matrix', '<ffffff', ['scaleX', 'scaleY', 'skewX', 'skewY', 'translateX', 'translateY'])
+    info['_alphaTransforms'] = _rs('alphaTransform', '<f', ['alpha'])
+    info['_colorTransforms'] = _rs('colorTransform', '<ffffffff', ['rMul', 'gMul', 'bMul', 'aMul', 'rAdd', 'gAdd', 'bAdd', 'aAdd'])
     info['_objects'] = _rs('objectData', '<II', ['type', 'id'])
     info['_textures'] = _rs('texture', '<IIiif', ['stringId', 'format', 'w', 'h', 'scale'])
     info['_fragments'] = _rs('textureFragment', '<IIiiiiiii', ['stringId', 'texId', 'rotated', 'x', 'y', 'u', 'v', 'w', 'h'])
@@ -377,15 +379,32 @@ def _lwf_blit_affine(sprite, mat, canvas, cx, cy, frag_x=0, frag_y=0, tex_scale=
     canvas.alpha_composite(out, (x0, y0))
 
 
-def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx, cy, depth=0, _debug=None):
+def _lwf_get_alpha(lwf, ct_id):
+    """Get alpha multiplier from a color/alpha transform ID.
+    Negative (bit 31 set) = colorTransform index, non-negative = alphaTransform index."""
+    if ct_id < 0:
+        i = ct_id & 0x7FFFFFFF
+        cts = lwf.get('_colorTransforms', [])
+        if i < len(cts):
+            return cts[i].get('aMul', 1.0)
+        return 1.0
+    ats = lwf.get('_alphaTransforms', [])
+    if ct_id < len(ats):
+        return ats[ct_id].get('alpha', 1.0)
+    return 1.0
+
+
+def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx, cy,
+                      depth=0, parent_alpha=1.0, _debug=None):
     """Render LWF movie by replaying frames 0..frame_idx to build cumulative Flash-style display list."""
     if movie_id >= len(lwf['_movies']) or depth > 20:
         return
     movie = lwf['_movies'][movie_id]
 
     display_list = {}
-    target_fi = min(frame_idx, max(0, movie['frms'] - 1))
-    for fi in range(target_fi + 1):
+    frms = max(1, movie['frms'])
+    local_fi = frame_idx % frms
+    for fi in range(local_fi + 1):
         abs_fi = movie['frmOff'] + fi
         if abs_fi >= len(lwf['_frames']):
             break
@@ -396,11 +415,17 @@ def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx
             ct, cid = lwf['_controls'][ci]['type'], lwf['_controls'][ci]['id']
             if ct == _LWF_CT_MOVE and cid < len(lwf['_places']):
                 place = lwf['_places'][cid]
-                display_list[place['depth']] = {
-                    'objId': place['objId'],
-                    'matId': place['matId'],
-                    'ctId': place['ctId'],
-                }
+                d = place['depth']
+                if d in display_list and display_list[d]['objId'] == place['objId']:
+                    display_list[d]['matId'] = place['matId']
+                    display_list[d]['ctId'] = place['ctId']
+                else:
+                    display_list[d] = {
+                        'objId': place['objId'],
+                        'matId': place['matId'],
+                        'ctId': place['ctId'],
+                        'placed_at': fi,
+                    }
             elif ct == _LWF_CT_MOVEM and cid < len(lwf['_ctrlMs']):
                 cm = lwf['_ctrlMs'][cid]
                 if cm['placeId'] < len(lwf['_places']):
@@ -412,6 +437,7 @@ def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx
                         display_list[d] = {
                             'objId': place['objId'],
                             'matId': cm['matId'], 'ctId': place['ctId'],
+                            'placed_at': fi,
                         }
             elif ct == _LWF_CT_MOVEC and cid < len(lwf['_ctrlCs']):
                 cm = lwf['_ctrlCs'][cid]
@@ -424,6 +450,7 @@ def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx
                         display_list[d] = {
                             'objId': place['objId'],
                             'matId': place['matId'], 'ctId': cm['ctId'],
+                            'placed_at': fi,
                         }
             elif ct == _LWF_CT_MOVEMC and cid < len(lwf['_ctrlMCs']):
                 cm = lwf['_ctrlMCs'][cid]
@@ -437,6 +464,7 @@ def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx
                         display_list[d] = {
                             'objId': place['objId'],
                             'matId': cm['matId'], 'ctId': cm['ctId'],
+                            'placed_at': fi,
                         }
 
     def resolve_bitmap(bid, world_mat):
@@ -451,6 +479,7 @@ def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx
         return (frag['texId'], frag, fm)
 
     rlist = []
+    movies_to_render = []
     for d in sorted(display_list.keys()):
         dl = display_list[d]
         oid = dl['objId']
@@ -458,11 +487,12 @@ def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx
             continue
         obj = lwf['_objects'][oid]
         wm = _lwf_mat_mul(parent_mat, _lwf_get_mat(lwf, dl['matId']))
+        alpha = parent_alpha * _lwf_get_alpha(lwf, dl.get('ctId', 0))
 
         if obj['type'] in (_LWF_OT_BITMAP, _LWF_OT_BITMAPEX):
             r = resolve_bitmap(obj['id'], wm)
             if r:
-                rlist.append((d, r[0], r[1], r[2]))
+                rlist.append((d, r[0], r[1], r[2], alpha))
         elif obj['type'] == _LWF_OT_GRAPHIC:
             if obj['id'] < len(lwf['_graphics']):
                 g = lwf['_graphics'][obj['id']]
@@ -473,12 +503,29 @@ def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx
                     if go['type'] in (_LWF_GOT_BITMAP, _LWF_GOT_BITMAPEX):
                         r = resolve_bitmap(go['id'], wm)
                         if r:
-                            rlist.append((d, r[0], r[1], r[2]))
+                            rlist.append((d, r[0], r[1], r[2], alpha))
         elif obj['type'] == _LWF_OT_MOVIE:
-            _render_lwf_movie(lwf, obj['id'], frame_idx, tex_imgs, wm, canvas, cx, cy, depth + 1)
+            sub_frame = local_fi - dl.get('placed_at', 0)
+            movies_to_render.append((d, obj['id'], sub_frame, wm, alpha))
+        elif obj['type'] == _LWF_OT_BUTTON:
+            btn_id = obj['id']
+            if btn_id < len(lwf.get('_buttons', [])):
+                btn = lwf['_buttons'][btn_id]
+                cond_off = btn.get('condOff', 0)
+                if cond_off < len(lwf.get('_buttonConditions', [])):
+                    bc = lwf['_buttonConditions'][cond_off]
+                    if bc.get('type', 0) in (_LWF_OT_BITMAP, _LWF_OT_BITMAPEX):
+                        r = resolve_bitmap(bc.get('id', 0), wm)
+                        if r:
+                            rlist.append((d, r[0], r[1], r[2], alpha))
 
     rlist.sort(key=lambda x: x[0])
-    for _, tex_idx, frag, mat in rlist:
+    mi = 0
+    for _, tex_idx, frag, mat, alpha in rlist:
+        while mi < len(movies_to_render) and movies_to_render[mi][0] < _:
+            md, mid, mf, mm, ma = movies_to_render[mi]
+            _render_lwf_movie(lwf, mid, mf, tex_imgs, mm, canvas, cx, cy, depth + 1, ma)
+            mi += 1
         img = tex_imgs.get(tex_idx)
         if not img:
             continue
@@ -492,7 +539,16 @@ def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx
             sp = sp.transpose(Image.Transpose.ROTATE_90)
         else:
             sp = img.crop((u, v, u + fw, v + fh))
+        if alpha < 0.99:
+            sp = sp.copy()
+            a_channel = sp.split()[3]
+            a_channel = a_channel.point(lambda p: int(p * alpha))
+            sp.putalpha(a_channel)
         _lwf_blit_affine(sp, mat, canvas, cx, cy, frag.get('x', 0), frag.get('y', 0))
+    while mi < len(movies_to_render):
+        md, mid, mf, mm, ma = movies_to_render[mi]
+        _render_lwf_movie(lwf, mid, mf, tex_imgs, mm, canvas, cx, cy, depth + 1, ma)
+        mi += 1
 
 
 def _detect_cocostudio(obj) -> bool:

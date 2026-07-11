@@ -197,6 +197,7 @@ class KHUxBGADContainer(KHUxFile):
             self.file_handle.seek(0, 2)
             file_size = self.file_handle.tell()
             self.file_handle.seek(pos)
+        self._progress_interval = 500 if file_size > 10_000_000 else 100
         count = 0
         while True:
             try:
@@ -204,7 +205,7 @@ class KHUxBGADContainer(KHUxFile):
                                 encryption_key=key)
                 entry = bgad.read_entry()
                 count += 1
-                if progress_callback and count % 50 == 0:
+                if progress_callback and count % self._progress_interval == 0:
                     pos = self.file_handle.tell()
                     progress_callback(count, pos, file_size)
                 yield entry
