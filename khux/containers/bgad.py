@@ -185,7 +185,8 @@ class KHUxBGADContainer(KHUxFile):
 
         return None
 
-    def iter_entries(self, progress_callback=None) -> List[BGADEntry]:
+    def iter_entries_lazy(self, progress_callback=None):
+        """Yield BGADEntry objects one at a time (streaming / lazy)."""
         if self._resolved_key is None and self.encryption_key is None:
             self._resolved_key = self._resolve_key()
 
@@ -196,19 +197,22 @@ class KHUxBGADContainer(KHUxFile):
             self.file_handle.seek(0, 2)
             file_size = self.file_handle.tell()
             self.file_handle.seek(pos)
-        entries = []
+        count = 0
         while True:
             try:
                 bgad = KHUxBGAD(self.file_handle, self.file_name,
                                 encryption_key=key)
                 entry = bgad.read_entry()
-                entries.append(entry)
-                if progress_callback and len(entries) % 50 == 0:
+                count += 1
+                if progress_callback and count % 50 == 0:
                     pos = self.file_handle.tell()
-                    progress_callback(len(entries), pos, file_size)
+                    progress_callback(count, pos, file_size)
+                yield entry
             except (IOError, struct.error, ValueError):
                 break
-        return entries
+
+    def iter_entries(self, progress_callback=None) -> List[BGADEntry]:
+        return list(self.iter_entries_lazy(progress_callback=progress_callback))
 
     def extract(self, extract_dir: str) -> List[BGADEntry]:
         if self._resolved_key is None and self.encryption_key is None:

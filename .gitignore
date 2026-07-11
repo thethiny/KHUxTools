@@ -35,6 +35,14 @@ tools/frida_*
 tools/gdb_*
 *.log
 
+# Native crypto extension (auto-compiled per platform)
+khux/utils/_crypto_cffi.c
+khux/utils/_crypto_cffi*.pyd
+khux/utils/_crypto_cffi*.so
+khux/utils/_crypto_cffi*.lib
+khux/utils/_crypto_cffi*.exp
+Release/
+
 # Misc generated files
 FEASIBILITY.md
 FINDINGS.md

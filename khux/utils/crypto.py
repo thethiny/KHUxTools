@@ -1,18 +1,84 @@
 import struct
 from typing import Optional
 
+import numpy as _np
+
+def _build_native():
+    """Compile the C crypto extension for the current platform."""
+    import os
+    import shutil
+    import cffi
+    ffi = cffi.FFI()
+    ffi.cdef('''
+    void lcg_xor_dwords(const uint8_t *in, uint8_t *out, uint32_t n, uint32_t seed);
+    void lcg_xor_bytes(const uint8_t *in, uint8_t *out, uint32_t n, uint32_t seed);
+    void chacha8_xor(const uint8_t *in, uint8_t *out, uint32_t n,
+                     const uint8_t *key, uint32_t key_len, const uint8_t *nonce8);
+    ''')
+    src_dir = os.path.dirname(os.path.abspath(__file__))
+    c_path = os.path.join(src_dir, '_crypto_native.c')
+    with open(c_path) as f:
+        ffi.set_source('khux.utils._crypto_cffi', f.read())
+    root = os.path.dirname(os.path.dirname(src_dir))
+    ffi.compile(tmpdir=root, verbose=False)
+    # Clean up build artifacts
+    import glob
+    gen_c = os.path.join(src_dir, '_crypto_cffi.c')
+    if os.path.exists(gen_c):
+        os.remove(gen_c)
+    for pat in ('_crypto_cffi*.lib', '_crypto_cffi*.exp', '_crypto_cffi*.o', '_crypto_cffi*.obj'):
+        for p in glob.glob(os.path.join(src_dir, pat)):
+            os.remove(p)
+    release_dir = os.path.join(root, 'Release')
+    if os.path.isdir(release_dir):
+        shutil.rmtree(release_dir, ignore_errors=True)
+
+_HAS_NATIVE = False
+try:
+    from khux.utils._crypto_cffi import ffi as _ffi, lib as _clib
+    _HAS_NATIVE = True
+except (ImportError, OSError):
+    try:
+        _build_native()
+        from khux.utils._crypto_cffi import ffi as _ffi, lib as _clib
+        _HAS_NATIVE = True
+    except Exception:
+        pass
+
+_LCG_A = 0x19660D
+_LCG_C = 0x3C6EF35F
+_LCG_M = 0xFFFFFFFF
+
 
 def _khux_rand(seed: int) -> int:
-    return (0x19660D * seed + 0x3C6EF35F) & 0xFFFFFFFF
+    return (_LCG_A * seed + _LCG_C) & _LCG_M
+
+
+def _lcg_keystream(seed: int, count: int) -> list:
+    """Generate `count` LCG values as a list of uint32."""
+    a, c, m = _LCG_A, _LCG_C, _LCG_M
+    s = seed & m
+    ks = [0] * count
+    for i in range(count):
+        s = (a * s + c) & m
+        ks[i] = s
+    return ks
 
 
 def _decrypt_mode1(data: bytes, seed: int) -> bytes:
-    out = bytearray(len(data))
-    s = seed & 0xFFFFFFFF
-    for i in range(len(data)):
-        s = _khux_rand(s)
-        out[i] = data[i] ^ (s & 0xFF)
-    return bytes(out)
+    n = len(data)
+    if n == 0:
+        return data
+    if _HAS_NATIVE:
+        buf_in = _ffi.from_buffer(data)
+        buf_out = _ffi.new('uint8_t[]', n)
+        _clib.lcg_xor_bytes(buf_in, buf_out, n, seed & _LCG_M)
+        return _ffi.buffer(buf_out, n)[:]
+    ks_ints = _lcg_keystream(seed, n)
+    ks = bytes(v & 0xFF for v in ks_ints)
+    arr = _np.frombuffer(data, dtype=_np.uint8)
+    ks_arr = _np.frombuffer(ks, dtype=_np.uint8)
+    return bytes(arr ^ ks_arr)
 
 
 def _encrypt_mode1(data: bytes, seed: int) -> bytes:
@@ -20,25 +86,30 @@ def _encrypt_mode1(data: bytes, seed: int) -> bytes:
 
 
 def _decrypt_mode2(data: bytes, seed: int) -> bytes:
-    out = bytearray(data)
     n = len(data)
+    if n == 0:
+        return data
+    if _HAS_NATIVE:
+        buf_in = _ffi.from_buffer(data)
+        buf_out = _ffi.new('uint8_t[]', n)
+        _clib.lcg_xor_dwords(buf_in, buf_out, n, seed & _LCG_M)
+        return _ffi.buffer(buf_out, n)[:]
     full = n & ~3
-    s = seed & 0xFFFFFFFF
-
-    for off in range(0, full, 4):
-        s = _khux_rand(s)
-        val = struct.unpack_from("<I", out, off)[0]
-        struct.pack_into("<I", out, off, (val ^ s) & 0xFFFFFFFF)
-
-    tail = n - full
-    if tail:
-        s = _khux_rand(s)
-        tmp = bytes(out[full:]) + b"\x00" * (4 - tail)
+    n_dwords = full // 4
+    need = n_dwords + (1 if n > full else 0)
+    ks_ints = _lcg_keystream(seed, need)
+    ks_bytes = struct.pack(f'<{n_dwords}I', *ks_ints[:n_dwords])
+    arr = _np.frombuffer(data[:full], dtype=_np.uint32).copy()
+    ks_arr = _np.frombuffer(ks_bytes, dtype=_np.uint32)
+    arr ^= ks_arr
+    result = arr.tobytes()
+    if n > full:
+        tail = n - full
+        tmp = bytearray(data[full:]) + b"\x00" * (4 - tail)
         val = struct.unpack("<I", tmp)[0]
-        dec = struct.pack("<I", (val ^ s) & 0xFFFFFFFF)
-        out[full:n] = dec[:tail]
-
-    return bytes(out)
+        dec = struct.pack("<I", (val ^ ks_ints[-1]) & _LCG_M)
+        result += dec[:tail]
+    return result
 
 
 def _encrypt_mode2(data: bytes, seed: int) -> bytes:
@@ -99,15 +170,24 @@ def chacha8_crypt(data: bytes, key: bytes, nonce8: bytes) -> bytes:
     if len(nonce8) != 8:
         raise ValueError(f"Nonce must be 8 bytes, got {len(nonce8)}")
 
-    out = bytearray(len(data))
-    counter = 0
-    for off in range(0, len(data), 64):
-        keystream = _chacha_block(key, counter, nonce8, rounds=8)
-        chunk = data[off:off + 64]
-        for i in range(len(chunk)):
-            out[off + i] = chunk[i] ^ keystream[i]
-        counter += 1
-    return bytes(out)
+    n = len(data)
+    if n == 0:
+        return data
+    if _HAS_NATIVE:
+        buf_in = _ffi.from_buffer(data)
+        buf_out = _ffi.new('uint8_t[]', n)
+        buf_key = _ffi.from_buffer(key)
+        buf_nonce = _ffi.from_buffer(nonce8)
+        _clib.chacha8_xor(buf_in, buf_out, n, buf_key, len(key), buf_nonce)
+        return _ffi.buffer(buf_out, n)[:]
+    n_blocks = (n + 63) // 64
+    ks_parts = []
+    for counter in range(n_blocks):
+        ks_parts.append(_chacha_block(key, counter, nonce8, rounds=8))
+    ks_all = b"".join(ks_parts)
+    arr = _np.frombuffer(data, dtype=_np.uint8)
+    ks_arr = _np.frombuffer(ks_all[:n], dtype=_np.uint8)
+    return bytes(arr ^ ks_arr)
 
 
 def _derive_nonce(raw_nonce: bytes, xor_mask: bytes) -> bytes:

@@ -1160,7 +1160,7 @@ class ImagePreviewWidget(QScrollArea):
 # ---------------------------------------------------------------------------
 class FileLoaderWorker(QThread):
     """Loads a BGAD container in a background thread."""
-    finished = pyqtSignal(object, list, str)  # (container, entries, path)
+    finished = pyqtSignal(object, list, str, dict, dict)  # (container, entries, path, formats, link_targets)
     error = pyqtSignal(str)
     progress = pyqtSignal(str, int, int)  # (message, current, total)
 
@@ -1168,6 +1168,64 @@ class FileLoaderWorker(QThread):
         super().__init__(parent)
         self._path = path
         self._canceled = False
+
+    def _classify_entries(self, entries):
+        entry_formats = {}
+        entry_link_targets = {}
+        entry_list = list(entries)
+        def _is_stub(e):
+            if len(e.data) != 4:
+                return False
+            if e.name.lower().endswith(".txt"):
+                try:
+                    text = e.data.decode("utf-8")
+                    if all(32 <= ord(c) < 127 or c in "\n\r\t" for c in text):
+                        return False
+                except (UnicodeDecodeError, ValueError):
+                    pass
+            return True
+        real_table = [i for i, e in enumerate(entry_list) if not _is_stub(e)]
+        total = len(entry_list)
+        for ei, e in enumerate(entry_list):
+            if self._canceled:
+                return entry_formats, entry_link_targets
+            if ei % 500 == 0:
+                self.progress.emit(f"Classifying entries... {ei}/{total}", ei, total)
+            if e.name.lower().endswith(".ttf") and not _is_stub(e):
+                entry_formats[e.name] = "ttf"
+            elif e.data and len(e.data) >= 4:
+                fmt = detect_format(e.data[:4])
+                if fmt == "index" and _is_stub(e):
+                    import struct as _struct
+                    stub_val = _struct.unpack("<I", e.data[:4])[0]
+                    if stub_val < len(real_table):
+                        target_idx = real_table[stub_val]
+                        target_data = entry_list[target_idx].data
+                        real_fmt = detect_format(target_data[:min(64, len(target_data))])
+                        if real_fmt in ("unknown", "index"):
+                            ext = e.name.rsplit(".", 1)[-1].lower() if "." in e.name else ""
+                            if ext in ("ttf", "lwf", "json", "txt", "plist"):
+                                real_fmt = ext
+                        entry_formats[e.name] = f"link:{real_fmt}"
+                        entry_link_targets[e.name] = target_idx
+                    else:
+                        entry_formats[e.name] = "index"
+                else:
+                    if fmt in ("json", "text") and len(e.data) > 20:
+                        try:
+                            probe = json.loads(e.data.decode("utf-8", errors="replace"))
+                            if _detect_exportjson(probe):
+                                fmt = "anim"
+                            elif probe.get('classname') == 'CCNode' and 'gameobjects' in probe:
+                                fmt = "scene"
+                            elif _detect_cocostudio(probe):
+                                fmt = "ui"
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                    entry_formats[e.name] = fmt
+            else:
+                entry_formats[e.name] = "unknown"
+        return entry_formats, entry_link_targets
 
     def run(self):
         try:
@@ -1184,9 +1242,13 @@ class FileLoaderWorker(QThread):
 
             self.progress.emit("Analyzing file...", 0, file_size)
             entries = container.iter_entries(progress_callback=on_progress)
+            if self._canceled:
+                return
+            self.progress.emit(f"Classifying {len(entries)} entries...", 0, len(entries))
+            entry_formats, entry_link_targets = self._classify_entries(entries)
             if not self._canceled:
                 self.progress.emit(f"Loaded {len(entries)} entries", len(entries), len(entries))
-                self.finished.emit(container, entries, self._path)
+                self.finished.emit(container, entries, self._path, entry_formats, entry_link_targets)
         except InterruptedError:
             pass
         except Exception as e:
@@ -2822,7 +2884,8 @@ class KHUxExplorer(QMainWindow):
         self._status_left.setText("Ready")
         self._loader = None
 
-    def _on_load_finished(self, _container, entries: list, path: str):
+    def _on_load_finished(self, _container, entries: list, path: str,
+                          entry_formats: dict = None, entry_link_targets: dict = None):
         self._loader = None
         self.current_file = path
         self.entries = entries
@@ -2836,61 +2899,8 @@ class KHUxExplorer(QMainWindow):
             if base not in self._basename_map:
                 self._basename_map[base] = e
 
-        self.entry_formats = {}
-        self.entry_link_targets: Dict[str, int] = {}
-        entry_list = list(entries)
-        # Build real-only table: non-stub entries.
-        # 4-byte .txt with printable ASCII are real data, not stubs.
-        def _is_stub(e):
-            if len(e.data) != 4:
-                return False
-            if e.name.lower().endswith(".txt"):
-                try:
-                    text = e.data.decode("utf-8")
-                    if all(32 <= ord(c) < 127 or c in "\n\r\t" for c in text):
-                        return False
-                except (UnicodeDecodeError, ValueError):
-                    pass
-            return True
-        real_table = [i for i, e in enumerate(entry_list) if not _is_stub(e)]
-        for ei, e in enumerate(entry_list):
-            if ei % 500 == 0 and hasattr(self, '_load_progress') and self._load_progress:
-                self._load_progress.setValue(ei)
-                QApplication.processEvents()
-            if e.name.lower().endswith(".ttf") and not _is_stub(e):
-                self.entry_formats[e.name] = "ttf"
-            elif e.data and len(e.data) >= 4:
-                fmt = detect_format(e.data[:4])
-                if fmt == "index" and _is_stub(e):
-                    import struct as _struct
-                    stub_val = _struct.unpack("<I", e.data[:4])[0]
-                    if stub_val < len(real_table):
-                        target_idx = real_table[stub_val]
-                        target_data = entry_list[target_idx].data
-                        real_fmt = detect_format(target_data[:min(64, len(target_data))])
-                        if real_fmt in ("unknown", "index"):
-                            ext = e.name.rsplit(".", 1)[-1].lower() if "." in e.name else ""
-                            if ext in ("ttf", "lwf", "json", "txt", "plist"):
-                                real_fmt = ext
-                        self.entry_formats[e.name] = f"link:{real_fmt}"
-                        self.entry_link_targets[e.name] = target_idx
-                    else:
-                        self.entry_formats[e.name] = "index"
-                else:
-                    if fmt in ("json", "text") and len(e.data) > 20:
-                        try:
-                            probe = json.loads(e.data.decode("utf-8", errors="replace"))
-                            if _detect_exportjson(probe):
-                                fmt = "anim"
-                            elif probe.get('classname') == 'CCNode' and 'gameobjects' in probe:
-                                fmt = "scene"
-                            elif _detect_cocostudio(probe):
-                                fmt = "ui"
-                        except (json.JSONDecodeError, ValueError):
-                            pass
-                    self.entry_formats[e.name] = fmt
-            else:
-                self.entry_formats[e.name] = "unknown"
+        self.entry_formats = entry_formats or {}
+        self.entry_link_targets = entry_link_targets or {}
 
         norm_path = os.path.normpath(path)
         if norm_path in self.recent_files:
@@ -2899,12 +2909,6 @@ class KHUxExplorer(QMainWindow):
         self.recent_files = self.recent_files[:10]
         self._save_recent_files()
         self._rebuild_recent_menu()
-
-        if hasattr(self, '_load_progress') and self._load_progress:
-            self._load_progress.setLabelText(f"Classifying {len(entries)} entries...")
-            self._load_progress.setMaximum(len(entries))
-            self._load_progress.setValue(0)
-            QApplication.processEvents()
 
         fname = os.path.basename(path)
         self._file_label.setText(fname)
