@@ -197,13 +197,30 @@ _LWF_ITEM_ARRAYS = [
     "textureFragment", "bitmap", "bitmapEx", "font", "textProperty",
     "text", "particleData", "particle", "programObject", "graphicObject",
     "graphic", "animation", "buttonCondition", "button", "label",
-    "instanceName", "eventData", "place", "controlMoveM", "controlMoveC",
+    "instanceName", "event", "place", "controlMoveM", "controlMoveC",
     "controlMoveMC", "control", "frame", "movieClipEvent", "movie",
     "movieLinkage", "stringData",
 ]
 
-_LWF_CT_MOVE_M, _LWF_CT_MOVE_C, _LWF_CT_MOVE_MC = 2, 3, 4
-_LWF_OT_GRAPHIC, _LWF_OT_MOVIE, _LWF_OT_BITMAP = 1, 2, 3
+# Control::Type enum (GREE lwf_format.h)
+_LWF_CT_MOVE = 0       # Place object (initial placement from Place struct)
+_LWF_CT_MOVEM = 1      # ControlMoveM (override matrix)
+_LWF_CT_MOVEC = 2      # ControlMoveC (override color)
+_LWF_CT_MOVEMC = 3     # ControlMoveMC (override matrix + color)
+_LWF_CT_ANIMATION = 4  # Animation trigger
+_LWF_CT_MOVEMCB = 5    # ControlMoveMCB (matrix + color + blend, non-COMPAT only)
+
+# Object::Type enum
+_LWF_OT_BUTTON = 0
+_LWF_OT_GRAPHIC = 1
+_LWF_OT_MOVIE = 2
+_LWF_OT_BITMAP = 3
+_LWF_OT_BITMAPEX = 4
+
+# GraphicObject::Type enum (DIFFERENT from Object::Type!)
+_LWF_GOT_BITMAP = 0
+_LWF_GOT_BITMAPEX = 1
+_LWF_GOT_TEXT = 2
 
 
 def _parse_lwf_data(data: bytes) -> dict:
@@ -243,25 +260,39 @@ def _parse_lwf_data(data: bytes) -> dict:
     sd = items.get('stringData', (0, 0))
     strings = []
     for i in range(sd[1]):
-        so = _st.unpack_from('<I', data, sd[0] + i * 4)[0]
-        end = sr.find(0, so) if so < len(sr) else so
-        if end < 0:
-            end = len(sr)
-        try:
-            strings.append(sr[so:end].decode('utf-8'))
-        except (UnicodeDecodeError, ValueError):
+        so2 = sd[0] + i * 8
+        if so2 + 8 > len(data):
+            break
+        so, slen = _st.unpack_from('<II', data, so2)
+        if so < len(sr):
+            end = min(so + slen, len(sr))
+            try:
+                strings.append(sr[so:end].rstrip(b'\x00').decode('utf-8'))
+            except (UnicodeDecodeError, ValueError):
+                strings.append('')
+        else:
             strings.append('')
     info['strings'] = strings
 
     info['_translates'] = _rs('translate', '<ff', ['x', 'y'])
-    info['_matrices'] = _rs('matrix', '<ffffff', ['sx', 'sy', 'sk0', 'sk1', 'tx', 'ty'])
+    info['_matrices'] = _rs('matrix', '<ffffff', ['scaleX', 'scaleY', 'skewX', 'skewY', 'translateX', 'translateY'])
     info['_objects'] = _rs('objectData', '<II', ['type', 'id'])
     info['_textures'] = _rs('texture', '<IIiif', ['stringId', 'format', 'w', 'h', 'scale'])
     info['_fragments'] = _rs('textureFragment', '<IIiiiiiii', ['stringId', 'texId', 'rotated', 'x', 'y', 'u', 'v', 'w', 'h'])
     info['_bitmaps'] = _rs('bitmap', '<II', ['matId', 'fragId'])
     info['_gfxObjects'] = _rs('graphicObject', '<II', ['type', 'id'])
     info['_graphics'] = _rs('graphic', '<II', ['objOff', 'objs'])
-    info['_places'] = _rs('place', '<iiii', ['depth', 'objId', 'instId', 'matId'])
+    raw_places = _rs('place', '<iiii', ['f0', 'f1', 'f2', 'f3'])
+    places = []
+    for rp in raw_places:
+        if rp['f1'] < 0:
+            places.append({'depth': rp['f0'] & 0xFFFF, 'objId': rp['f1'] & 0xFFFF,
+                           'instId': (rp['f0'] >> 16) & 0xFFFF,
+                           'matId': rp['f2'], 'ctId': rp['f3']})
+        else:
+            places.append({'depth': rp['f0'], 'objId': rp['f1'], 'instId': -1,
+                           'matId': rp['f2'], 'ctId': rp['f3']})
+    info['_places'] = places
     info['_ctrlMs'] = _rs('controlMoveM', '<II', ['placeId', 'matId'])
     info['_ctrlCs'] = _rs('controlMoveC', '<II', ['placeId', 'ctId'])
     info['_ctrlMCs'] = _rs('controlMoveMC', '<III', ['placeId', 'matId', 'ctId'])
@@ -274,11 +305,10 @@ def _parse_lwf_data(data: bytes) -> dict:
         if count > 0 and name not in ('stringBytes', 'animationBytes', 'stringData'):
             info['counts'][name] = count
 
-    img_exts = ('.png', '.btf', '.jpg', '.pvr', '.webp')
     texture_set = set()
     for t in info['_textures']:
         sname = strings[t['stringId']] if t['stringId'] < len(strings) else ''
-        if sname:
+        if sname and len(sname) > 1:
             texture_set.add(sname)
     info['textures'] = sorted(texture_set)
     info['texture_resolved'] = {t: _decode_lwf_tex_name(t) for t in info['textures']}
@@ -287,10 +317,17 @@ def _parse_lwf_data(data: bytes) -> dict:
 
 
 def _lwf_get_mat(lwf, mid):
+    """Return affine matrix as column-major tuple (m00, m10, m01, m11, tx, ty).
+    Binary stores (scaleX, scaleY, skewX, skewY, tx, ty) in row-major:
+      | scaleX  skewX  tx |
+      | skewY   scaleY ty |
+    Column-major for mat_mul: (scaleX, skewY, skewX, scaleY, tx, ty)."""
     if mid < 0:
         i = mid & 0x7FFFFFFF
         m = lwf['_matrices'][i] if i < len(lwf['_matrices']) else None
-        return (m['sx'], m['sy'], m['sk0'], m['sk1'], m['tx'], m['ty']) if m else (1, 0, 0, 1, 0, 0)
+        if m:
+            return (m['scaleX'], m['skewY'], m['skewX'], m['scaleY'], m['translateX'], m['translateY'])
+        return (1, 0, 0, 1, 0, 0)
     t = lwf['_translates'][mid] if mid < len(lwf['_translates']) else None
     return (1, 0, 0, 1, t['x'], t['y']) if t else (1, 0, 0, 1, 0, 0)
 
@@ -301,88 +338,161 @@ def _lwf_mat_mul(a, b):
             a[0]*b[4]+a[2]*b[5]+a[4], a[1]*b[4]+a[3]*b[5]+a[5])
 
 
-def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx, cy, depth=0):
-    """Recursively render an LWF movie frame onto canvas."""
+def _lwf_blit_affine(sprite, mat, canvas, cx, cy, frag_x=0, frag_y=0, tex_scale=1.0):
+    """Blit sprite onto canvas using full 2D affine transform.
+    mat is column-major (m00, m10, m01, m11, tx, ty).
+    Sprite local space: origin at (frag_x/scale, frag_y/scale),
+    Y-up (cocos2d) mapped to PIL Y-down canvas."""
     import math as _math
+    m00, m10, m01, m11, tx, ty = mat
+    sw, sh = sprite.width, sprite.height
+    if sw <= 0 or sh <= 0:
+        return
+    s = tex_scale if tex_scale > 0 else 1.0
+    a00, a01 = m00 / s, -m01 / s
+    a10, a11 = -m10 / s, m11 / s
+    off_x = cx + tx + (m00 * frag_x + m01 * (frag_y + sh)) / s
+    off_y = cy - ty - (m10 * frag_x + m11 * (frag_y + sh)) / s
+    corners = [(0, 0), (sw, 0), (sw, sh), (0, sh)]
+    pxs = [a00 * sx + a01 * sy + off_x for sx, sy in corners]
+    pys = [a10 * sx + a11 * sy + off_y for sx, sy in corners]
+    x0 = max(0, int(_math.floor(min(pxs))))
+    y0 = max(0, int(_math.floor(min(pys))))
+    x1 = min(canvas.width, int(_math.ceil(max(pxs))))
+    y1 = min(canvas.height, int(_math.ceil(max(pys))))
+    ow, oh = x1 - x0, y1 - y0
+    if ow <= 0 or oh <= 0 or ow > 8192 or oh > 8192:
+        return
+    det = a00 * a11 - a01 * a10
+    if abs(det) < 1e-10:
+        return
+    inv_d = 1.0 / det
+    ox, oy = x0 - off_x, y0 - off_y
+    coeffs = (
+        a11 * inv_d, -a01 * inv_d, (a11 * ox - a01 * oy) * inv_d,
+        -a10 * inv_d, a00 * inv_d, (-a10 * ox + a00 * oy) * inv_d,
+    )
+    sp = sprite if sprite.mode == 'RGBA' else sprite.convert('RGBA')
+    out = sp.transform((ow, oh), Image.AFFINE, coeffs, resample=Image.BILINEAR)
+    canvas.alpha_composite(out, (x0, y0))
+
+
+def _render_lwf_movie(lwf, movie_id, frame_idx, tex_imgs, parent_mat, canvas, cx, cy, depth=0, _debug=None):
+    """Render LWF movie by replaying frames 0..frame_idx to build cumulative Flash-style display list."""
     if movie_id >= len(lwf['_movies']) or depth > 20:
         return
     movie = lwf['_movies'][movie_id]
-    fi = movie['frmOff'] + min(frame_idx, max(0, movie['frms'] - 1))
-    if fi >= len(lwf['_frames']):
-        return
-    frame = lwf['_frames'][fi]
-    rlist = []
-    for ci in range(frame['ctrlOff'], frame['ctrlOff'] + frame['ctrls']):
-        if ci >= len(lwf['_controls']):
+
+    display_list = {}
+    target_fi = min(frame_idx, max(0, movie['frms'] - 1))
+    for fi in range(target_fi + 1):
+        abs_fi = movie['frmOff'] + fi
+        if abs_fi >= len(lwf['_frames']):
             break
-        ct, cid = lwf['_controls'][ci]['type'], lwf['_controls'][ci]['id']
-        pid = matid = None
-        if ct == _LWF_CT_MOVE_M and cid < len(lwf['_ctrlMs']):
-            pid, matid = lwf['_ctrlMs'][cid]['placeId'], lwf['_ctrlMs'][cid]['matId']
-        elif ct == _LWF_CT_MOVE_C and cid < len(lwf['_ctrlCs']):
-            pid = lwf['_ctrlCs'][cid]['placeId']
-        elif ct == _LWF_CT_MOVE_MC and cid < len(lwf['_ctrlMCs']):
-            pid, matid = lwf['_ctrlMCs'][cid]['placeId'], lwf['_ctrlMCs'][cid]['matId']
-        if pid is None or pid >= len(lwf['_places']):
-            continue
-        place = lwf['_places'][pid]
-        mid = matid if matid is not None else place['matId']
-        wm = _lwf_mat_mul(parent_mat, _lwf_get_mat(lwf, mid))
-        oid = place['objId'] & 0x7FFFFFFF if place['objId'] < 0 else place['objId']
+        frame = lwf['_frames'][abs_fi]
+        for ci in range(frame['ctrlOff'], frame['ctrlOff'] + frame['ctrls']):
+            if ci >= len(lwf['_controls']):
+                break
+            ct, cid = lwf['_controls'][ci]['type'], lwf['_controls'][ci]['id']
+            if ct == _LWF_CT_MOVE and cid < len(lwf['_places']):
+                place = lwf['_places'][cid]
+                display_list[place['depth']] = {
+                    'objId': place['objId'],
+                    'matId': place['matId'],
+                    'ctId': place['ctId'],
+                }
+            elif ct == _LWF_CT_MOVEM and cid < len(lwf['_ctrlMs']):
+                cm = lwf['_ctrlMs'][cid]
+                if cm['placeId'] < len(lwf['_places']):
+                    place = lwf['_places'][cm['placeId']]
+                    d = place['depth']
+                    if d in display_list:
+                        display_list[d]['matId'] = cm['matId']
+                    else:
+                        display_list[d] = {
+                            'objId': place['objId'],
+                            'matId': cm['matId'], 'ctId': place['ctId'],
+                        }
+            elif ct == _LWF_CT_MOVEC and cid < len(lwf['_ctrlCs']):
+                cm = lwf['_ctrlCs'][cid]
+                if cm['placeId'] < len(lwf['_places']):
+                    place = lwf['_places'][cm['placeId']]
+                    d = place['depth']
+                    if d in display_list:
+                        display_list[d]['ctId'] = cm['ctId']
+                    else:
+                        display_list[d] = {
+                            'objId': place['objId'],
+                            'matId': place['matId'], 'ctId': cm['ctId'],
+                        }
+            elif ct == _LWF_CT_MOVEMC and cid < len(lwf['_ctrlMCs']):
+                cm = lwf['_ctrlMCs'][cid]
+                if cm['placeId'] < len(lwf['_places']):
+                    place = lwf['_places'][cm['placeId']]
+                    d = place['depth']
+                    if d in display_list:
+                        display_list[d]['matId'] = cm['matId']
+                        display_list[d]['ctId'] = cm['ctId']
+                    else:
+                        display_list[d] = {
+                            'objId': place['objId'],
+                            'matId': cm['matId'], 'ctId': cm['ctId'],
+                        }
+
+    def resolve_bitmap(bid, world_mat):
+        if bid >= len(lwf['_bitmaps']):
+            return None
+        bmp = lwf['_bitmaps'][bid]
+        bm = _lwf_get_mat(lwf, bmp['matId'])
+        fm = _lwf_mat_mul(world_mat, bm)
+        if bmp['fragId'] >= len(lwf['_fragments']):
+            return None
+        frag = lwf['_fragments'][bmp['fragId']]
+        return (frag['texId'], frag, fm)
+
+    rlist = []
+    for d in sorted(display_list.keys()):
+        dl = display_list[d]
+        oid = dl['objId']
         if oid >= len(lwf['_objects']):
             continue
         obj = lwf['_objects'][oid]
-        if obj['type'] == _LWF_OT_BITMAP:
-            b = lwf['_bitmaps'][obj['id']] if obj['id'] < len(lwf['_bitmaps']) else None
-            if b:
-                fm = _lwf_mat_mul(wm, _lwf_get_mat(lwf, b['matId']))
-                f = lwf['_fragments'][b['fragId']] if b['fragId'] < len(lwf['_fragments']) else None
-                if f:
-                    t = lwf['_textures'][f['texId']] if f['texId'] < len(lwf['_textures']) else None
-                    if t:
-                        sn = lwf['strings'][t['stringId']] if t['stringId'] < len(lwf['strings']) else ''
-                        rlist.append((place['depth'], sn, f, fm))
+        wm = _lwf_mat_mul(parent_mat, _lwf_get_mat(lwf, dl['matId']))
+
+        if obj['type'] in (_LWF_OT_BITMAP, _LWF_OT_BITMAPEX):
+            r = resolve_bitmap(obj['id'], wm)
+            if r:
+                rlist.append((d, r[0], r[1], r[2]))
         elif obj['type'] == _LWF_OT_GRAPHIC:
-            g = lwf['_graphics'][obj['id']] if obj['id'] < len(lwf['_graphics']) else None
-            if g:
+            if obj['id'] < len(lwf['_graphics']):
+                g = lwf['_graphics'][obj['id']]
                 for gi in range(g['objOff'], g['objOff'] + g['objs']):
-                    go = lwf['_gfxObjects'][gi] if gi < len(lwf['_gfxObjects']) else None
-                    if go and go['type'] == _LWF_OT_BITMAP:
-                        b = lwf['_bitmaps'][go['id']] if go['id'] < len(lwf['_bitmaps']) else None
-                        if b:
-                            fm = _lwf_mat_mul(wm, _lwf_get_mat(lwf, b['matId']))
-                            f = lwf['_fragments'][b['fragId']] if b['fragId'] < len(lwf['_fragments']) else None
-                            if f:
-                                t = lwf['_textures'][f['texId']] if f['texId'] < len(lwf['_textures']) else None
-                                if t:
-                                    sn = lwf['strings'][t['stringId']] if t['stringId'] < len(lwf['strings']) else ''
-                                    rlist.append((place['depth'], sn, f, fm))
+                    if gi >= len(lwf['_gfxObjects']):
+                        break
+                    go = lwf['_gfxObjects'][gi]
+                    if go['type'] in (_LWF_GOT_BITMAP, _LWF_GOT_BITMAPEX):
+                        r = resolve_bitmap(go['id'], wm)
+                        if r:
+                            rlist.append((d, r[0], r[1], r[2]))
         elif obj['type'] == _LWF_OT_MOVIE:
             _render_lwf_movie(lwf, obj['id'], frame_idx, tex_imgs, wm, canvas, cx, cy, depth + 1)
+
     rlist.sort(key=lambda x: x[0])
-    for _, sn, frag, mat in rlist:
-        dec = _decode_lwf_tex_name(sn)
-        img = tex_imgs.get(dec) or tex_imgs.get(sn) or tex_imgs.get(dec.rsplit('/', 1)[-1] if '/' in dec else dec)
+    for _, tex_idx, frag, mat in rlist:
+        img = tex_imgs.get(tex_idx)
         if not img:
             continue
-        u, v, w, h = frag['u'], frag['v'], frag['w'], frag['h']
-        sp = img.crop((u, v, u + w, v + h)) if w > 0 and h > 0 else img
-        sx = _math.sqrt(mat[0]**2 + mat[1]**2)
-        sy = _math.sqrt(mat[2]**2 + mat[3]**2)
-        nw, nh = max(1, int(sp.width * sx)), max(1, int(sp.height * sy))
-        if (nw, nh) != sp.size:
-            sp = sp.resize((nw, nh), Image.BILINEAR)
-        dx = cx + int(mat[4]) - nw // 2
-        dy = cy - int(mat[5]) - nh // 2
-        sx2, sy2 = 0, 0
-        if dx < 0:
-            sx2 = -dx; dx = 0
-        if dy < 0:
-            sy2 = -dy; dy = 0
-        cw2 = min(sp.width - sx2, canvas.width - dx)
-        ch2 = min(sp.height - sy2, canvas.height - dy)
-        if cw2 > 0 and ch2 > 0:
-            canvas.alpha_composite(sp.crop((sx2, sy2, sx2 + cw2, sy2 + ch2)), (dx, dy))
+        fw, fh = frag['w'], frag['h']
+        if fw <= 0 or fh <= 0:
+            continue
+        u, v = frag['u'], frag['v']
+        rotated = frag.get('rotated', 0)
+        if rotated:
+            sp = img.crop((u, v, u + fh, v + fw))
+            sp = sp.transpose(Image.Transpose.ROTATE_90)
+        else:
+            sp = img.crop((u, v, u + fw, v + fh))
+        _lwf_blit_affine(sp, mat, canvas, cx, cy, frag.get('x', 0), frag.get('y', 0))
 
 
 def _detect_cocostudio(obj) -> bool:
@@ -3732,25 +3842,33 @@ class KHUxExplorer(QMainWindow):
         self._plist_next_btn.setVisible(idx < len(sprites) - 1)
 
     def _load_lwf_textures(self, entry: BGADEntry, lwf_info: dict) -> dict:
-        """Load BTF textures referenced by an LWF, matching by directory prefix."""
+        """Load BTF textures by position: sequential entries after the LWF in the container."""
         tex_imgs = {}
         if not HAS_BTF:
             return tex_imgs
-        lwf_dir = entry.name.rsplit('/', 1)[0] + '/' if '/' in entry.name else ''
-        resolved = lwf_info.get('texture_resolved', {})
-        for tex_name in lwf_info.get('textures', []):
-            decoded = resolved.get(tex_name, tex_name)
-            basename = decoded.rsplit('/', 1)[-1] if '/' in decoded else decoded
-            for candidate in [tex_name, decoded, lwf_dir + basename, basename]:
-                e = self._find_entry(candidate)
-                if e and len(e.data) >= 4 and e.data[:4] == b'\x89BTF':
-                    try:
-                        tex_imgs[tex_name] = KHUxBTF.from_bytes(e.data).decode(use_canvas=True).convert('RGBA')
-                        tex_imgs[decoded] = tex_imgs[tex_name]
-                        tex_imgs[basename] = tex_imgs[tex_name]
-                    except Exception:
-                        pass
-                    break
+        tex_count = len(lwf_info.get('_textures', []))
+        if tex_count == 0:
+            return tex_imgs
+        lwf_idx = None
+        for i, e in enumerate(self.entries):
+            if e.name == entry.name and e.offset == entry.offset:
+                lwf_idx = i
+                break
+        if lwf_idx is None:
+            return tex_imgs
+        loaded = 0
+        for i in range(lwf_idx + 1, min(lwf_idx + 1 + tex_count * 2, len(self.entries))):
+            e = self.entries[i]
+            if len(e.data) >= 4 and e.data[:4] == b'\x89BTF':
+                try:
+                    tex_imgs[loaded] = KHUxBTF.from_bytes(e.data).decode(use_canvas=True).convert('RGBA')
+                    loaded += 1
+                    if loaded >= tex_count:
+                        break
+                except Exception:
+                    pass
+            elif e.data[:4] == b'LWF\x00':
+                break
         return tex_imgs
 
     def _render_lwf_visual(self, entry: BGADEntry) -> bool:
@@ -3758,7 +3876,9 @@ class KHUxExplorer(QMainWindow):
         if not HAS_PIL:
             return False
         info = _parse_lwf_data(entry.data)
-        if not info.get('_movies'):
+        movies = info.get('_movies', [])
+        if not movies:
+            self._status_left.setText(f"LWF: no movies parsed ({len(entry.data)} bytes)")
             return False
 
         tex_imgs = self._load_lwf_textures(entry, info)
@@ -3766,11 +3886,19 @@ class KHUxExplorer(QMainWindow):
         self._lwf_textures = tex_imgs
         self._lwf_frame = 0
 
-        root_movie = info['_movies'][info['rootMovieId']] if info['rootMovieId'] < len(info['_movies']) else None
+        root_id = info.get('rootMovieId', 0)
+        root_movie = movies[root_id] if root_id < len(movies) else None
         if root_movie:
             self._lwf_total_frames = root_movie['frms']
         else:
             self._lwf_total_frames = 1
+
+        tex_count = len(info.get('textures', []))
+        loaded = len(tex_imgs)
+        self._status_left.setText(
+            f"LWF v{info.get('version_str','?')} {info.get('width')}x{info.get('height')} "
+            f"root={root_id} frames={self._lwf_total_frames} "
+            f"tex={tex_count} loaded={loaded} movies={len(movies)}")
 
         self._lwf_render_current()
         return True
@@ -3782,9 +3910,14 @@ class KHUxExplorer(QMainWindow):
         w = max(info.get('width', 200), 50)
         h = max(info.get('height', 200), 50)
         canvas = Image.new('RGBA', (w, h), (30, 30, 30, 255))
+        debug_lines = []
         _render_lwf_movie(info, info['rootMovieId'], self._lwf_frame,
                           self._lwf_textures, (1, 0, 0, 1, 0, 0),
-                          canvas, w // 2, h // 2)
+                          canvas, w // 2, h // 2, _debug=debug_lines)
+        if debug_lines:
+            draw = ImageDraw.Draw(canvas)
+            for i, line in enumerate(debug_lines[:15]):
+                draw.text((5, 5 + i * 14), line, fill=(255, 255, 0))
         self._current_pil_image = canvas
         self._image_preview.set_pixmap(_pil_image_to_qpixmap(canvas), keep_zoom=True)
 
