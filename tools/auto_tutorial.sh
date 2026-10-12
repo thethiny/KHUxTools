@@ -39,6 +39,17 @@ already_handled() {
 
 echo "=== KHUx Auto Tutorial ==="
 
+# Ensure resource files exist on device
+GAME_DIR="/data/data/$PKG/files/r"
+SRC_DIR="/sdcard/khux_data"
+adb -s $PHONE shell "su -c 'mkdir -p $GAME_DIR'" 2>/dev/null
+for f in misc.mp4 misc.png; do
+    if ! adb -s $PHONE shell "su -c 'test -f $GAME_DIR/$f && echo ok'" 2>/dev/null | grep -q ok; then
+        echo "[*] Copying $f from $SRC_DIR..."
+        adb -s $PHONE shell "su -c 'cp $SRC_DIR/$f $GAME_DIR/$f && chown u0_a200:u0_a200 $GAME_DIR/$f'" 2>&1
+    fi
+done
+
 # Kill game
 echo "[0] Killing game..."
 adb -s $PHONE shell "am force-stop $PKG"

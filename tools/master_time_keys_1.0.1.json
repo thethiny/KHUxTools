@@ -1,0 +1,10 @@
+{
+ "evGroupPattern": [
+  "endTime",
+  "shiftTime",
+  "startTime"
+ ],
+ "shop": [
+  "benefitResetTime"
+ ]
+}

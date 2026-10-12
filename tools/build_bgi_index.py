@@ -31,13 +31,23 @@ def scan_bgad_entries(mp4_path):
 
 
 def _is_stub(name, size, data):
-    """A 4-byte entry is a stub UNLESS it's a .txt with valid printable ASCII."""
+    """A 4-byte entry is a stub (dedup link) UNLESS it's real short data.
+    Rules: if not 4 bytes, not a stub. If .txt with printable ASCII, not a stub.
+    If .json starting with { or [, not a stub. Everything else at 4 bytes = stub."""
     if size != 4:
         return False
-    if os.path.splitext(name)[1].lower() == ".txt":
+    ext = os.path.splitext(name)[1].lower()
+    if ext == ".txt":
         try:
             text = data.decode("utf-8")
             if all(32 <= ord(c) < 127 or c in "\n\r\t" for c in text):
+                return False
+        except (UnicodeDecodeError, ValueError):
+            pass
+    if ext == ".json":
+        try:
+            text = data.decode("utf-8").lstrip()
+            if text and text[0] in ("{", "["):
                 return False
         except (UnicodeDecodeError, ValueError):
             pass

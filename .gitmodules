@@ -1,0 +1,3 @@
+[submodule "recomp"]
+	path = recomp
+	url = git@github.com:thethiny/KHUx-Recomp.git

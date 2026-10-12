@@ -56,3 +56,11 @@ misc*.mp4
 aliud*.*
 build_m
 temp_test
+
+# Analysis caches from tools/master_layout_asm.py (regenerated)
+tools/.asm_refs_*.json
+
+# Local test / helper scripts
+test_render.py
+tools/test_cs_render.py
+tools/launch_113.sh

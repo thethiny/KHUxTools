@@ -1,0 +1,5217 @@
+{
+ "world": {
+  "func": "0x777500",
+  "match": 1.0,
+  "size": 948,
+  "fields": [
+   {
+    "key": "worldId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "worldName",
+    "offset": 4,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "raidBackground",
+    "offset": 133,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "instanceLwf",
+    "offset": 262,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "instance",
+    "offset": 391,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "xPos",
+    "offset": 520,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "yPos",
+    "offset": 524,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rate",
+    "offset": 528,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validParts",
+    "offset": 532,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "partsId",
+    "offset": 536,
+    "size": 387,
+    "kind": "str[3x129]"
+   },
+   {
+    "key": "xPostion",
+    "offset": 924,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "yPostion",
+    "offset": 936,
+    "size": 12,
+    "kind": "int[3]"
+   }
+  ]
+ },
+ "tutorialMisc": {
+  "func": "0x777d48",
+  "match": 1.0,
+  "size": 32,
+  "fields": [
+   {
+    "key": "tutorialId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "startClearQuest",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "startMiscId",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "num1",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "num2",
+    "offset": 16,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "setClearQuest",
+    "offset": 20,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "setMiscId",
+    "offset": 24,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "valid",
+    "offset": 28,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "albumChallenge": {
+  "func": "0x778348",
+  "match": 1.0,
+  "size": 308,
+  "fields": [
+   {
+    "key": "challengeId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sortId",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "valid",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "submissionName",
+    "offset": 12,
+    "size": 257,
+    "kind": "str[257]"
+   },
+   {
+    "key": "type",
+    "offset": 272,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "attribute",
+    "offset": 276,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "targetNumber",
+    "offset": 280,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rewardType",
+    "offset": 284,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rewardId",
+    "offset": 288,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "assignSkillType",
+    "offset": 292,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "assignSkillId",
+    "offset": 296,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "assignSkillLv",
+    "offset": 300,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "num",
+    "offset": 304,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "avatarCombination": {
+  "func": "0x778aa8",
+  "match": 1.0,
+  "size": 16,
+  "fields": [
+   {
+    "key": "avatarCombinationId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "combinationType",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "avatarPartsId",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "status",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "avatarParts": {
+  "func": "0x778f74",
+  "match": 1.0,
+  "size": 192,
+  "fields": [
+   {
+    "key": "avatarPartsId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 4,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "partsType",
+    "offset": 136,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "gender",
+    "offset": 140,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "combinationType",
+    "offset": 144,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "combinationFlag",
+    "offset": 148,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "position",
+    "offset": 152,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "setKind",
+    "offset": 156,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "fixedFlag",
+    "offset": 160,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validSetCloth",
+    "offset": 164,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "setCloth",
+    "offset": 168,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "status",
+    "offset": 188,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "badstatus": {
+  "func": "0x7796b8",
+  "match": 1.0,
+  "size": 92,
+  "fields": [
+   {
+    "key": "badstatusId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 4,
+    "size": 65,
+    "kind": "str[65]"
+   },
+   {
+    "key": "iconId",
+    "offset": 72,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "effect",
+    "offset": 76,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "target",
+    "offset": 80,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "power",
+    "offset": 84,
+    "size": 8,
+    "kind": "int[2]"
+   }
+  ]
+ },
+ "battleMisc": {
+  "func": "0x779c64",
+  "match": 1.0,
+  "size": 8,
+  "fields": [
+   {
+    "key": "battleMiscId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "value",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "buff": {
+  "func": "0x77a0b0",
+  "match": 1.0,
+  "size": 88,
+  "fields": [
+   {
+    "key": "buffId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "grade",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 8,
+    "size": 65,
+    "kind": "str[65]"
+   },
+   {
+    "key": "iconId",
+    "offset": 76,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "effect",
+    "offset": 80,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addPower",
+    "offset": 84,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "burst": {
+  "func": "0x77a624",
+  "match": 0.75,
+  "size": 732,
+  "fields": [
+   {
+    "key": "burstId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "motionId",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "effectId",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "distance",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "effectDirectionFix",
+    "offset": 16,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 20,
+    "size": 65,
+    "kind": "str[65]"
+   },
+   {
+    "key": "description",
+    "offset": 85,
+    "size": 257,
+    "kind": "str[257]"
+   },
+   {
+    "key": "maxEnhanceCount",
+    "offset": 344,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "attribute",
+    "offset": 348,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "target",
+    "offset": 352,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "hitCount",
+    "offset": 356,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "gauge",
+    "offset": 360,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "critical",
+    "offset": 364,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "criticalPower",
+    "offset": 368,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "displayPower",
+    "offset": 372,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "displayPowerPerEnforce",
+    "offset": 376,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "displayMaxPower",
+    "offset": 396,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "displayMaxPowerPerEnforce",
+    "offset": 400,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "basePower",
+    "offset": 420,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "basePowerPerEnforce",
+    "offset": 424,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "damageType",
+    "offset": 444,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "specialPowerType",
+    "offset": 448,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sp1",
+    "offset": 452,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sp2",
+    "offset": 456,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sp1PerEnforce",
+    "offset": 460,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "sp2PerEnforce",
+    "offset": 480,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "addTurn",
+    "offset": 500,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addCount",
+    "offset": 504,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttack",
+    "offset": 508,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufAttack",
+    "offset": 512,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufAttackAll",
+    "offset": 516,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefense",
+    "offset": 520,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufDefense",
+    "offset": 524,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufDefenseAll",
+    "offset": 528,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackPower",
+    "offset": 532,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufAttackPower",
+    "offset": 536,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufAttackPowerAll",
+    "offset": 540,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefensePower",
+    "offset": 544,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufDefensePower",
+    "offset": 548,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufDefensePowerAll",
+    "offset": 552,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackSpeed",
+    "offset": 556,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufAttackSpeed",
+    "offset": 560,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufAttackSpeedAll",
+    "offset": 564,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefenseSpeed",
+    "offset": 568,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufDefenseSpeed",
+    "offset": 572,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufDefenseSpeedAll",
+    "offset": 576,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackMagic",
+    "offset": 580,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufAttackMagic",
+    "offset": 584,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufAttackMagicAll",
+    "offset": 588,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefenseMagic",
+    "offset": 592,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufDefenseMagic",
+    "offset": 596,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "debufDefenseMagicAll",
+    "offset": 600,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetBufAtttack",
+    "offset": 604,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufAttack",
+    "offset": 608,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufAttackAll",
+    "offset": 612,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetBufDefense",
+    "offset": 616,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufDefense",
+    "offset": 620,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufDefenseAll",
+    "offset": 624,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetBufAtttackPower",
+    "offset": 628,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufAttackPower",
+    "offset": 632,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufAttackPowerAll",
+    "offset": 636,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetBufDefensePower",
+    "offset": 640,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufDefensePower",
+    "offset": 644,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufDefensePowerAll",
+    "offset": 648,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetBufAtttackSpeed",
+    "offset": 652,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufAttackSpeed",
+    "offset": 656,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufAttackSpeedAll",
+    "offset": 660,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetBufDefenseSpeed",
+    "offset": 664,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufDefenseSpeed",
+    "offset": 668,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufDefenseSpeedAll",
+    "offset": 672,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetBufAtttackMagic",
+    "offset": 676,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufAttackMagic",
+    "offset": 680,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufAttackMagicAll",
+    "offset": 684,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetBufDefenseMagic",
+    "offset": 688,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufDefenseMagic",
+    "offset": 692,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDebufDefenseMagicAll",
+    "offset": 696,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "copyBufBase",
+    "offset": 700,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "copyBufAttribute",
+    "offset": 704,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "heal",
+    "offset": 708,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "healShake",
+    "offset": 712,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "curePoison",
+    "offset": 716,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "cureSleep",
+    "offset": 720,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "cureDeepPoison",
+    "offset": 724,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "cureParalysis",
+    "offset": 728,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "chapter": {
+  "func": "0x77c208",
+  "match": 1.0,
+  "size": 264,
+  "fields": [
+   {
+    "key": "chapterId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 4,
+    "size": 257,
+    "kind": "str[257]"
+   }
+  ]
+ },
+ "colosseum": {
+  "func": "0x77c67c",
+  "match": 1.0,
+  "size": 220,
+  "fields": [
+   {
+    "key": "colosseumId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "colosseumStageId",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "round",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "ap",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "arrivalStageCount",
+    "offset": 16,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rankId",
+    "offset": 20,
+    "size": 65,
+    "kind": "str[65]"
+   },
+   {
+    "key": "excellentUnlockCount",
+    "offset": 88,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validStageReward",
+    "offset": 92,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "stageRewardType",
+    "offset": 96,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "stageRewardId",
+    "offset": 100,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "stageRewardAssignType",
+    "offset": 104,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "stageRewardSkillId",
+    "offset": 108,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "stageRewardSkillLv",
+    "offset": 112,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "stageRewardNum",
+    "offset": 116,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validReward",
+    "offset": 120,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rewardType",
+    "offset": 124,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "rewardId",
+    "offset": 140,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "rewardAssignType",
+    "offset": 156,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "rewardSkillId",
+    "offset": 172,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "rewardSkillLv",
+    "offset": 188,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "rewardNum",
+    "offset": 204,
+    "size": 16,
+    "kind": "int[4]"
+   }
+  ]
+ },
+ "colosseumStage": {
+  "func": "0x77d128",
+  "match": 1.0,
+  "size": 92,
+  "fields": [
+   {
+    "key": "colosseumStageId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "openDate",
+    "offset": 4,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "closeDate",
+    "offset": 12,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "rankingCloseDate",
+    "offset": 20,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "headColosseumId",
+    "offset": 28,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "termColosseumId",
+    "offset": 32,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rankingId",
+    "offset": 36,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validStage",
+    "offset": 40,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "stageId",
+    "offset": 44,
+    "size": 40,
+    "kind": "int[10]"
+   },
+   {
+    "key": "loopStageCount",
+    "offset": 84,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "lvPerLoop",
+    "offset": 88,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "drawMedalList": {
+  "func": "0x77d894",
+  "match": 1.0,
+  "size": 32,
+  "fields": [
+   {
+    "key": "drawMedalListId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "tableId",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "medalId",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weight",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "skillType",
+    "offset": 16,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "skillId",
+    "offset": 20,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "burstUpperNumber",
+    "offset": 24,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "isDeleted",
+    "offset": 28,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "drawMedalType": {
+  "func": "0x77de74",
+  "match": 0.82,
+  "size": 1136,
+  "fields": [
+   {
+    "key": "drawMedalTypeId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "drawType",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sortId",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 12,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "description",
+    "offset": 141,
+    "size": 257,
+    "kind": "str[257]"
+   },
+   {
+    "key": "payType",
+    "offset": 400,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "price",
+    "offset": 404,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "tableId",
+    "offset": 408,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validLot",
+    "offset": 412,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "lotCount",
+    "offset": 416,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "lotPsr",
+    "offset": 428,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "lotSr",
+    "offset": 440,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "lotPr",
+    "offset": 452,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "lotR",
+    "offset": 464,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "lotPn",
+    "offset": 476,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "lotN",
+    "offset": 488,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "tableIds",
+    "offset": 500,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "validAdd",
+    "offset": 512,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addType",
+    "offset": 516,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addId",
+    "offset": 520,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addSkillType",
+    "offset": 524,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addSkillId",
+    "offset": 528,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addSkillLv",
+    "offset": 532,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addNum",
+    "offset": 536,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bannerUrl",
+    "offset": 540,
+    "size": 513,
+    "kind": "str[513]"
+   },
+   {
+    "key": "mypageBanner",
+    "offset": 1056,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "dayCount",
+    "offset": 1060,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "warrantNumberOfTime",
+    "offset": 1064,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "warrantMedalListIds",
+    "offset": 1068,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "warrantMedalRepeat",
+    "offset": 1072,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "warrantResetMedalListIds",
+    "offset": 1076,
+    "size": 40,
+    "kind": "int[10]"
+   },
+   {
+    "key": "startDate",
+    "offset": 1116,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "endDate",
+    "offset": 1124,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "isDeleted",
+    "offset": 1132,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "drawSkillList": {
+  "func": "0x77ee74",
+  "match": 1.0,
+  "size": 20,
+  "fields": [
+   {
+    "key": "drawSkillListId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "tableId",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "skillId",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weight",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "isDeleted",
+    "offset": 16,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "drawSkillType": {
+  "func": "0x77f390",
+  "match": 1.0,
+  "size": 32,
+  "fields": [
+   {
+    "key": "drawSkillTypeId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "tableId",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "lotRare3",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "lotRare2",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "lotRare1",
+    "offset": 16,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "lotNon",
+    "offset": 20,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "lotReserve",
+    "offset": 24,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "isDeleted",
+    "offset": 28,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "enemy": {
+  "func": "0x77f970",
+  "match": 0.95,
+  "size": 992,
+  "fields": [
+   {
+    "key": "enemyId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 4,
+    "size": 65,
+    "kind": "str[65]"
+   },
+   {
+    "key": "flavor",
+    "offset": 69,
+    "size": 513,
+    "kind": "str[513]"
+   },
+   {
+    "key": "displayId",
+    "offset": 584,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "show",
+    "offset": 588,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "showSwf",
+    "offset": 592,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "showFrame",
+    "offset": 596,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "hideFrame",
+    "offset": 600,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "moveSpeed",
+    "offset": 604,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "hitRadius",
+    "offset": 608,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "tapRadius",
+    "offset": 612,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "width",
+    "offset": 616,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "height",
+    "offset": 620,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "spBattle",
+    "offset": 624,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "kind",
+    "offset": 628,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "attribute",
+    "offset": 632,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validGrowth",
+    "offset": 636,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "baseLv",
+    "offset": 640,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "hp",
+    "offset": 660,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "attack",
+    "offset": 680,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "defense",
+    "offset": 700,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "exp",
+    "offset": 720,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "money",
+    "offset": 740,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "raidPoint",
+    "offset": 760,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "lux",
+    "offset": 780,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "attackCp",
+    "offset": 800,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "suppressCp",
+    "offset": 804,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "attackHp",
+    "offset": 808,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "suppressHp",
+    "offset": 812,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "suppressGuilt",
+    "offset": 816,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "battlePattern",
+    "offset": 820,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "displayHeight",
+    "offset": 824,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "runaway",
+    "offset": 828,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "neverAttack",
+    "offset": 832,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validSkill",
+    "offset": 836,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "skillId",
+    "offset": 840,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "skillRequire",
+    "offset": 856,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "skillRequireArg",
+    "offset": 872,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "skillOdds",
+    "offset": 888,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "protectPoison",
+    "offset": 904,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "protectDeepPoison",
+    "offset": 908,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "protectSleep",
+    "offset": 912,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "protectParalysis",
+    "offset": 916,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "registPoison",
+    "offset": 920,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "registDeepPoison",
+    "offset": 924,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "registSleep",
+    "offset": 928,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "registParalysis",
+    "offset": 932,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttack",
+    "offset": 936,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefense",
+    "offset": 940,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackPower",
+    "offset": 944,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefensePower",
+    "offset": 948,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackSpeed",
+    "offset": 952,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefenseSpeed",
+    "offset": 956,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackMagic",
+    "offset": 960,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefenseMagic",
+    "offset": 964,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufTurn",
+    "offset": 968,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufCount",
+    "offset": 972,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "statusAilments",
+    "offset": 976,
+    "size": 8,
+    "kind": "int[2]"
+   },
+   {
+    "key": "statusAilmentsTurn",
+    "offset": 984,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "statusAilmentsCount",
+    "offset": 988,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "enemyAttack": {
+  "func": "0x7810e4",
+  "match": 0.9,
+  "size": 228,
+  "fields": [
+   {
+    "key": "enemyAttackId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 4,
+    "size": 65,
+    "kind": "str[65]"
+   },
+   {
+    "key": "attackMotion",
+    "offset": 72,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "hitEffect",
+    "offset": 76,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "effectDirectionFix",
+    "offset": 80,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "display",
+    "offset": 84,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "choiseAttribute",
+    "offset": 88,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "hitCount",
+    "offset": 92,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "power",
+    "offset": 96,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "critical",
+    "offset": 100,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "criticalPower",
+    "offset": 104,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "target",
+    "offset": 108,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "effect",
+    "offset": 112,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addTarget",
+    "offset": 116,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addTurn",
+    "offset": 120,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addCount",
+    "offset": 124,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttack",
+    "offset": 128,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefense",
+    "offset": 132,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackPower",
+    "offset": 136,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefensePower",
+    "offset": 140,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackSpeed",
+    "offset": 144,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefenseSpeed",
+    "offset": 148,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackMagic",
+    "offset": 152,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefenseMagic",
+    "offset": 156,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetAttack",
+    "offset": 160,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDefense",
+    "offset": 164,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetAttackPower",
+    "offset": 168,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDefensePower",
+    "offset": 172,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetAttackSpeed",
+    "offset": 176,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDefenseSpeed",
+    "offset": 180,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetAttackMagic",
+    "offset": 184,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDefenseMagic",
+    "offset": 188,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "heal",
+    "offset": 192,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "healShake",
+    "offset": 196,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "poison",
+    "offset": 200,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "deepPoison",
+    "offset": 204,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sleep",
+    "offset": 208,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "paralysis",
+    "offset": 212,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "curePoison",
+    "offset": 216,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "cureSleep",
+    "offset": 220,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "cureParalysis",
+    "offset": 224,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "evCampaign": {
+  "func": "0x781f6c",
+  "match": 0.94,
+  "size": 352,
+  "fields": [
+   {
+    "key": "campaignId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "type",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "power",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "displayText",
+    "offset": 12,
+    "size": 257,
+    "kind": "str[257]"
+   },
+   {
+    "key": "stageType",
+    "offset": 272,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validStageId",
+    "offset": 276,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "stageId",
+    "offset": 280,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "startTime",
+    "offset": 300,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "endTime",
+    "offset": 308,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "weekMonday",
+    "offset": 316,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weekTuesday",
+    "offset": 320,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weekWednesday",
+    "offset": 324,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weekThursday",
+    "offset": 328,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weekFriday",
+    "offset": 332,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weekSaturday",
+    "offset": 336,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weekSunday",
+    "offset": 340,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "groupPattern",
+    "offset": 344,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validMinute",
+    "offset": 348,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "evGroupPattern": {
+  "func": "0x7828d0",
+  "match": 1.0,
+  "size": 24,
+  "fields": [
+   {
+    "key": "patternId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "groupDivide",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "startTime",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "endTime",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "shiftTime",
+    "offset": 16,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rotate",
+    "offset": 20,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "evStage": {
+  "func": "0x782ec0",
+  "match": 0.87,
+  "size": 660,
+  "fields": [
+   {
+    "key": "eventStageId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validStageId",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "stageId",
+    "offset": 8,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "validStageWidthId",
+    "offset": 28,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "stageStartId",
+    "offset": 32,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "stageEndId",
+    "offset": 36,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "eventCategory",
+    "offset": 40,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "eventType",
+    "offset": 44,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bannerUrl",
+    "offset": 48,
+    "size": 513,
+    "kind": "str[513]"
+   },
+   {
+    "key": "mypageBanner",
+    "offset": 564,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "startTime",
+    "offset": 568,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "endTime",
+    "offset": 576,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "boardEndTime",
+    "offset": 584,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "weekMonday",
+    "offset": 592,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weekTuesday",
+    "offset": 596,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weekWednesday",
+    "offset": 600,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weekThursday",
+    "offset": 604,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weekFriday",
+    "offset": 608,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weekSaturday",
+    "offset": 612,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weekSunday",
+    "offset": 616,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "benefitId",
+    "offset": 620,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "benefitMonday",
+    "offset": 624,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "benefitTuesday",
+    "offset": 628,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "benefitWednesday",
+    "offset": 632,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "benefitThursday",
+    "offset": 636,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "benefitFriday",
+    "offset": 640,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "benefitSaturday",
+    "offset": 644,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "benefitSunday",
+    "offset": 648,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "groupPattern",
+    "offset": 652,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validMinute",
+    "offset": 656,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "initItem": {
+  "func": "0x783b94",
+  "match": 1.0,
+  "size": 28,
+  "fields": [
+   {
+    "key": "id",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "category",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "equipType",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "equipNo",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "param",
+    "offset": 16,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "itemId",
+    "offset": 20,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "skillId",
+    "offset": 24,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "keyblade": {
+  "func": "0x784130",
+  "match": 0.9,
+  "size": 356,
+  "fields": [
+   {
+    "key": "keybladeId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 4,
+    "size": 65,
+    "kind": "str[65]"
+   },
+   {
+    "key": "description",
+    "offset": 69,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "lv",
+    "offset": 200,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "displayId",
+    "offset": 204,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "category",
+    "offset": 208,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "passive",
+    "offset": 212,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "passivePower",
+    "offset": 216,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "drawCount",
+    "offset": 220,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "maxBurstGauge",
+    "offset": 224,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validConsist",
+    "offset": 228,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "attribute",
+    "offset": 232,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "darklight",
+    "offset": 252,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "accord",
+    "offset": 272,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "dlaccord",
+    "offset": 292,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "partnerRate",
+    "offset": 312,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "evolveId",
+    "offset": 316,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validNeedMaterial",
+    "offset": 320,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "needMaterialId",
+    "offset": 324,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "needMaterialNum",
+    "offset": 340,
+    "size": 16,
+    "kind": "int[4]"
+   }
+  ]
+ },
+ "loginBonus": {
+  "func": "0x784c0c",
+  "match": 1.0,
+  "size": 2360,
+  "fields": [
+   {
+    "key": "loginBonusId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bonusType",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "title",
+    "offset": 8,
+    "size": 257,
+    "kind": "str[257]"
+   },
+   {
+    "key": "description",
+    "offset": 265,
+    "size": 1025,
+    "kind": "str[1025]"
+   },
+   {
+    "key": "comment",
+    "offset": 1290,
+    "size": 1025,
+    "kind": "str[1025]"
+   },
+   {
+    "key": "day",
+    "offset": 2316,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "startDate",
+    "offset": 2320,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "endDate",
+    "offset": 2328,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "rewardType",
+    "offset": 2336,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rewardId",
+    "offset": 2340,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rewardAssignSkillType",
+    "offset": 2344,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rewardAssignSkillId",
+    "offset": 2348,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rewardAssignSkillLv",
+    "offset": 2352,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rewardNum",
+    "offset": 2356,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "material": {
+  "func": "0x785478",
+  "match": 1.0,
+  "size": 212,
+  "fields": [
+   {
+    "key": "materialId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "category",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sortId",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 12,
+    "size": 65,
+    "kind": "str[65]"
+   },
+   {
+    "key": "description",
+    "offset": 77,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "sell",
+    "offset": 208,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "medal": {
+  "func": "0x785a04",
+  "match": 0.43,
+  "size": 1276,
+  "fields": [
+   {
+    "key": "medalId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "imageId",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "thumbId",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sortId",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 16,
+    "size": 65,
+    "kind": "str[65]"
+   },
+   {
+    "key": "flavor",
+    "offset": 81,
+    "size": 513,
+    "kind": "str[513]"
+   },
+   {
+    "key": "advantage",
+    "offset": 594,
+    "size": 513,
+    "kind": "str[513]"
+   },
+   {
+    "key": "type",
+    "offset": 1108,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "attribute",
+    "offset": 1112,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "darklight",
+    "offset": 1116,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validSource",
+    "offset": 1120,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "source",
+    "offset": 1124,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "rare",
+    "offset": 1136,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "skillSlot",
+    "offset": 1140,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "guiltValue",
+    "offset": 1144,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "maxLv",
+    "offset": 1148,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "expType",
+    "offset": 1152,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "cost",
+    "offset": 1156,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "minCost",
+    "offset": 1160,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "growthType",
+    "offset": 1164,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "attack",
+    "offset": 1168,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "maxAttack",
+    "offset": 1172,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addMaxAttack",
+    "offset": 1176,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "defense",
+    "offset": 1180,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "maxDefense",
+    "offset": 1184,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addMaxDefense",
+    "offset": 1188,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validBurst",
+    "offset": 1192,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "burstId",
+    "offset": 1196,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "burstEnhanceCategory",
+    "offset": 1200,
+    "size": 8,
+    "kind": "int[2]"
+   },
+   {
+    "key": "groupId",
+    "offset": 1208,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sellSpherePoint",
+    "offset": 1212,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "materialExp",
+    "offset": 1216,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sell",
+    "offset": 1220,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sellPerLv",
+    "offset": 1224,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "enhanceAttack",
+    "offset": 1228,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "enhanceDefense",
+    "offset": 1232,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "enhanceCost",
+    "offset": 1236,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validEvolve",
+    "offset": 1240,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "evolveId",
+    "offset": 1244,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "evolveMoney",
+    "offset": 1248,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validEvolveNeed",
+    "offset": 1252,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "evolveNeedId",
+    "offset": 1256,
+    "size": 20,
+    "kind": "int[5]"
+   }
+  ]
+ },
+ "medalMisc": {
+  "func": "0x786a5c",
+  "match": 1.0,
+  "size": 16,
+  "fields": [
+   {
+    "key": "medalMiscId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "value",
+    "offset": 4,
+    "size": 12,
+    "kind": "int[3]"
+   }
+  ]
+ },
+ "misc": {
+  "func": "0x786ef0",
+  "match": 1.0,
+  "size": 8,
+  "fields": [
+   {
+    "key": "miscId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "value",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "player": {
+  "func": "0x78733c",
+  "match": 1.0,
+  "size": 28,
+  "fields": [
+   {
+    "key": "lv",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "needExp",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "luxMedal",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "ap",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "cost",
+    "offset": 16,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "hp",
+    "offset": 20,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rewardId",
+    "offset": 24,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "raidEnemy": {
+  "func": "0x7878d8",
+  "match": 0.95,
+  "size": 708,
+  "fields": [
+   {
+    "key": "raidEnemyId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 4,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "attribute",
+    "offset": 136,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rare",
+    "offset": 140,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weakness",
+    "offset": 144,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validParts",
+    "offset": 148,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "parts",
+    "offset": 152,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "validGrowth",
+    "offset": 172,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "baseLv",
+    "offset": 176,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "hp",
+    "offset": 196,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "attack",
+    "offset": 216,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "defense",
+    "offset": 236,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "expAttack",
+    "offset": 256,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "expSuppress",
+    "offset": 276,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "moneyAttack",
+    "offset": 296,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "moneySuppress",
+    "offset": 316,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "luxAttack",
+    "offset": 336,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "luxSuppress",
+    "offset": 356,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "burstAttack",
+    "offset": 376,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "burstSuppress",
+    "offset": 396,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "hpAttack",
+    "offset": 416,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "hpSuppress",
+    "offset": 436,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "guiltSuppress",
+    "offset": 456,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "rewardId",
+    "offset": 476,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "mvpRewardId",
+    "offset": 496,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "destroyAllRewardId",
+    "offset": 516,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "drawHeight",
+    "offset": 536,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validSkill",
+    "offset": 540,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "skillId",
+    "offset": 544,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "skillRequire",
+    "offset": 560,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "skillRequireArg",
+    "offset": 576,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "skillOdds",
+    "offset": 592,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "protectPoison",
+    "offset": 608,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "protectDeepPoison",
+    "offset": 612,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "protectSleep",
+    "offset": 616,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "protectParalysis",
+    "offset": 620,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "protectConfusion",
+    "offset": 624,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "registPoison",
+    "offset": 628,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "registDeepPoison",
+    "offset": 632,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "registSleep",
+    "offset": 636,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "registParalysis",
+    "offset": 640,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "registConfusion",
+    "offset": 644,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttack",
+    "offset": 648,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefense",
+    "offset": 652,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackPower",
+    "offset": 656,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefensePower",
+    "offset": 660,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackSpeed",
+    "offset": 664,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefenseSpeed",
+    "offset": 668,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackMagic",
+    "offset": 672,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefenseMagic",
+    "offset": 676,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufTurn",
+    "offset": 680,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufCount",
+    "offset": 684,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "statusAilments",
+    "offset": 688,
+    "size": 8,
+    "kind": "int[2]"
+   },
+   {
+    "key": "statusAilmentsTurn",
+    "offset": 696,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "statusAilmentsCount",
+    "offset": 700,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bgmRaid",
+    "offset": 704,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "raidEnemyAttack": {
+  "func": "0x7891cc",
+  "match": 0.89,
+  "size": 216,
+  "fields": [
+   {
+    "key": "raidEnemyAttackId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 4,
+    "size": 65,
+    "kind": "str[65]"
+   },
+   {
+    "key": "display",
+    "offset": 72,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "choiseAttribute",
+    "offset": 76,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "hitCount",
+    "offset": 80,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "power",
+    "offset": 84,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "critical",
+    "offset": 88,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "criticalPower",
+    "offset": 92,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "target",
+    "offset": 96,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "effect",
+    "offset": 100,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addTarget",
+    "offset": 104,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addTurn",
+    "offset": 108,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addCount",
+    "offset": 112,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttack",
+    "offset": 116,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefense",
+    "offset": 120,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackPower",
+    "offset": 124,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefensePower",
+    "offset": 128,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackSpeed",
+    "offset": 132,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefenseSpeed",
+    "offset": 136,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufAttackMagic",
+    "offset": 140,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bufDefenseMagic",
+    "offset": 144,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetAttack",
+    "offset": 148,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDefense",
+    "offset": 152,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetAttackPower",
+    "offset": 156,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDefensePower",
+    "offset": 160,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetAttackSpeed",
+    "offset": 164,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDefenseSpeed",
+    "offset": 168,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetAttackMagic",
+    "offset": 172,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetDefenseMagic",
+    "offset": 176,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "heal",
+    "offset": 180,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "healShake",
+    "offset": 184,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "poison",
+    "offset": 188,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "deepPoison",
+    "offset": 192,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sleep",
+    "offset": 196,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "paralysis",
+    "offset": 200,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "curePoison",
+    "offset": 204,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "cureSleep",
+    "offset": 208,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "cureParalysis",
+    "offset": 212,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "raidReward": {
+  "func": "0x789f8c",
+  "match": 1.0,
+  "size": 128,
+  "fields": [
+   {
+    "key": "raidRewardId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "oddsUpPerLv",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "pointUpPerLv",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validReward",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "type",
+    "offset": 16,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "id",
+    "offset": 32,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "assignSkillType",
+    "offset": 48,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "assignSkillId",
+    "offset": 64,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "assignSkillLv",
+    "offset": 80,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "num",
+    "offset": 96,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "odds",
+    "offset": 112,
+    "size": 16,
+    "kind": "int[4]"
+   }
+  ]
+ },
+ "raidSetting": {
+  "func": "0x78a7c0",
+  "match": 1.0,
+  "size": 68,
+  "fields": [
+   {
+    "key": "raidSettingId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bossId",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bossUpTime",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "useAp",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rareBossId",
+    "offset": 16,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rareBossUpTime",
+    "offset": 20,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rareUseAp",
+    "offset": 24,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rareUpType",
+    "offset": 28,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rareUpTypeArg",
+    "offset": 32,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "rareUpTriggerBossId",
+    "offset": 36,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validUnlockRare",
+    "offset": 40,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "unlockRareBossId",
+    "offset": 44,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "unlockRareNum",
+    "offset": 56,
+    "size": 12,
+    "kind": "int[3]"
+   }
+  ]
+ },
+ "rankingReward": {
+  "func": "0x78af4c",
+  "match": 1.0,
+  "size": 256,
+  "fields": [
+   {
+    "key": "rankingRewardId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "startRank",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "endRank",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validReward",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "type",
+    "offset": 16,
+    "size": 40,
+    "kind": "int[10]"
+   },
+   {
+    "key": "id",
+    "offset": 56,
+    "size": 40,
+    "kind": "int[10]"
+   },
+   {
+    "key": "skillType",
+    "offset": 96,
+    "size": 40,
+    "kind": "int[10]"
+   },
+   {
+    "key": "skillId",
+    "offset": 136,
+    "size": 40,
+    "kind": "int[10]"
+   },
+   {
+    "key": "skillLv",
+    "offset": 176,
+    "size": 40,
+    "kind": "int[10]"
+   },
+   {
+    "key": "num",
+    "offset": 216,
+    "size": 40,
+    "kind": "int[10]"
+   }
+  ]
+ },
+ "reward": {
+  "func": "0x78b754",
+  "match": 1.0,
+  "size": 136,
+  "fields": [
+   {
+    "key": "rewardId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validReward",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "display",
+    "offset": 8,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "type",
+    "offset": 24,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "id",
+    "offset": 40,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "assignSkillType",
+    "offset": 56,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "assignSkillId",
+    "offset": 72,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "assignSkillLv",
+    "offset": 88,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "num",
+    "offset": 104,
+    "size": 16,
+    "kind": "int[4]"
+   },
+   {
+    "key": "odds",
+    "offset": 120,
+    "size": 16,
+    "kind": "int[4]"
+   }
+  ]
+ },
+ "skill": {
+  "func": "0x78bf7c",
+  "match": 0.65,
+  "size": 312,
+  "fields": [
+   {
+    "key": "skillId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "imageId",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "thumbId",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 12,
+    "size": 65,
+    "kind": "str[65]"
+   },
+   {
+    "key": "description",
+    "offset": 77,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "rank",
+    "offset": 208,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "maxLv",
+    "offset": 212,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "expType",
+    "offset": 216,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sortId",
+    "offset": 220,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "categoryEvolve",
+    "offset": 224,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "invokeType",
+    "offset": 228,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "invokeProb",
+    "offset": 232,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "invokeProbPerLv",
+    "offset": 236,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "invokeShowTiming",
+    "offset": 240,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "attackUp",
+    "offset": 244,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "burstCancel",
+    "offset": 248,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "damageCut",
+    "offset": 252,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "dokonjo",
+    "offset": 256,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "counter",
+    "offset": 260,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addAction",
+    "offset": 264,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addPoison",
+    "offset": 268,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addDeepPoison",
+    "offset": 272,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addSleep",
+    "offset": 276,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "addParalysis",
+    "offset": 280,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "conditionTurn",
+    "offset": 284,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "conditionCount",
+    "offset": 288,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "prizeHpUp",
+    "offset": 292,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "prizeBurstUp",
+    "offset": 296,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "luxUp",
+    "offset": 300,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "moneyUp",
+    "offset": 304,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "raidUp",
+    "offset": 308,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "skillExp": {
+  "func": "0x78cc20",
+  "match": 1.0,
+  "size": 16,
+  "fields": [
+   {
+    "key": "expId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "value",
+    "offset": 4,
+    "size": 12,
+    "kind": "int[3]"
+   }
+  ]
+ },
+ "sphere": {
+  "func": "0x78d0b4",
+  "match": 1.0,
+  "size": 184,
+  "fields": [
+   {
+    "key": "sphereBoardId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "boardName",
+    "offset": 4,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "kindId",
+    "offset": 136,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "boardId",
+    "offset": 140,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "arryId",
+    "offset": 144,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "masuId",
+    "offset": 148,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "type",
+    "offset": 152,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "openId",
+    "offset": 156,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "openParam",
+    "offset": 160,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "price",
+    "offset": 164,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "startDatetime",
+    "offset": 168,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "endDatetime",
+    "offset": 176,
+    "size": 8,
+    "kind": "date"
+   }
+  ]
+ },
+ "sphereArray": {
+  "func": "0x78d808",
+  "match": 1.0,
+  "size": 184,
+  "fields": [
+   {
+    "key": "arryId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "spCol4",
+    "offset": 4,
+    "size": 36,
+    "kind": "int[9]"
+   },
+   {
+    "key": "spCol3",
+    "offset": 40,
+    "size": 36,
+    "kind": "int[9]"
+   },
+   {
+    "key": "spCol2",
+    "offset": 76,
+    "size": 36,
+    "kind": "int[9]"
+   },
+   {
+    "key": "spCol1",
+    "offset": 112,
+    "size": 36,
+    "kind": "int[9]"
+   },
+   {
+    "key": "spCol0",
+    "offset": 148,
+    "size": 36,
+    "kind": "int[9]"
+   }
+  ]
+ },
+ "sphereMasu": {
+  "func": "0x78de9c",
+  "match": 1.0,
+  "size": 652,
+  "fields": [
+   {
+    "key": "masuId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sphereBoardId",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "spherePoint",
+    "offset": 8,
+    "size": 92,
+    "kind": "int[23]"
+   },
+   {
+    "key": "rewardSelect",
+    "offset": 100,
+    "size": 92,
+    "kind": "int[23]"
+   },
+   {
+    "key": "medalCategory",
+    "offset": 192,
+    "size": 92,
+    "kind": "int[23]"
+   },
+   {
+    "key": "rewardId",
+    "offset": 284,
+    "size": 92,
+    "kind": "int[23]"
+   },
+   {
+    "key": "rewardExpand",
+    "offset": 376,
+    "size": 92,
+    "kind": "int[23]"
+   },
+   {
+    "key": "rewardExpandId",
+    "offset": 468,
+    "size": 92,
+    "kind": "int[23]"
+   },
+   {
+    "key": "rewardValue",
+    "offset": 560,
+    "size": 92,
+    "kind": "int[23]"
+   }
+  ]
+ },
+ "stage": {
+  "func": "0x78e67c",
+  "match": 0.67,
+  "size": 1020,
+  "fields": [
+   {
+    "key": "stageId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "id",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 8,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "mapName",
+    "offset": 137,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "useAp",
+    "offset": 268,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "chapterId",
+    "offset": 272,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "worldId",
+    "offset": 276,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "thumbId",
+    "offset": 280,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "stageKind",
+    "offset": 284,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "showIcon",
+    "offset": 288,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validBeforeDrama",
+    "offset": 292,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "beforeDramaId",
+    "offset": 296,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "beforeDramaType",
+    "offset": 316,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "validAfterDrama",
+    "offset": 336,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "afterDramaId",
+    "offset": 340,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "afterDramaType",
+    "offset": 360,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "validClearGetTitle",
+    "offset": 380,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "clearGetTitle",
+    "offset": 384,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validClearGetSphere",
+    "offset": 388,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "clearGetSphere",
+    "offset": 392,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "resetClearGet",
+    "offset": 396,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validClearGetItem",
+    "offset": 400,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "clearGetItemType",
+    "offset": 404,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "clearGetItemId",
+    "offset": 416,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "clearGetAssignSkillType",
+    "offset": 428,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "clearGetAssignSkillId",
+    "offset": 440,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "clearGetAssignSkillLv",
+    "offset": 452,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "clearGetItemNum",
+    "offset": 464,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "resetSubMission",
+    "offset": 476,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validSubmission",
+    "offset": 480,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "submissionRequire",
+    "offset": 484,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "submissionName",
+    "offset": 496,
+    "size": 387,
+    "kind": "str[3x129]"
+   },
+   {
+    "key": "submissionDataType",
+    "offset": 884,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "submissionIdType",
+    "offset": 896,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "submissionId",
+    "offset": 908,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "submissionNum",
+    "offset": 920,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "submissionRewardType",
+    "offset": 932,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "submissionItemId",
+    "offset": 944,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "submissionSkillType",
+    "offset": 956,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "submissionSkillId",
+    "offset": 968,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "submissionSkillLv",
+    "offset": 980,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "submissionItemNum",
+    "offset": 992,
+    "size": 12,
+    "kind": "int[3]"
+   },
+   {
+    "key": "raidBoss",
+    "offset": 1004,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bgmField",
+    "offset": 1008,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bgmBattle",
+    "offset": 1012,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bgmBoss",
+    "offset": 1016,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "title": {
+  "func": "0x78fc20",
+  "match": 1.0,
+  "size": 344,
+  "fields": [
+   {
+    "key": "titleId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "category",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "title",
+    "offset": 8,
+    "size": 65,
+    "kind": "str[65]"
+   },
+   {
+    "key": "description",
+    "offset": 73,
+    "size": 257,
+    "kind": "str[257]"
+   },
+   {
+    "key": "require",
+    "offset": 332,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "value",
+    "offset": 336,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "label",
+    "offset": 340,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "serialcodeReward": {
+  "func": "0x790200",
+  "match": 1.0,
+  "size": 432,
+  "fields": [
+   {
+    "key": "serialcodeRewardId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "name",
+    "offset": 4,
+    "size": 257,
+    "kind": "str[257]"
+   },
+   {
+    "key": "startDate",
+    "offset": 262,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "endDate",
+    "offset": 270,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "itemId",
+    "offset": 280,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validReward",
+    "offset": 284,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "type",
+    "offset": 288,
+    "size": 24,
+    "kind": "int[6]"
+   },
+   {
+    "key": "id",
+    "offset": 312,
+    "size": 24,
+    "kind": "int[6]"
+   },
+   {
+    "key": "skillType",
+    "offset": 336,
+    "size": 24,
+    "kind": "int[6]"
+   },
+   {
+    "key": "skillId",
+    "offset": 360,
+    "size": 24,
+    "kind": "int[6]"
+   },
+   {
+    "key": "skillLv",
+    "offset": 384,
+    "size": 24,
+    "kind": "int[6]"
+   },
+   {
+    "key": "num",
+    "offset": 408,
+    "size": 24,
+    "kind": "int[6]"
+   }
+  ]
+ },
+ "shop": {
+  "func": "0x790ae4",
+  "match": 1.0,
+  "size": 708,
+  "fields": [
+   {
+    "key": "shopId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "productId",
+    "offset": 4,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "sortId",
+    "offset": 136,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "type",
+    "offset": 140,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "os",
+    "offset": 144,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "price",
+    "offset": 148,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "number",
+    "offset": 152,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "bonus",
+    "offset": 156,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "explanation",
+    "offset": 160,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "stageSkipTicket",
+    "offset": 292,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "appleStatus",
+    "offset": 296,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "benefitId",
+    "offset": 300,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "benefitBonusValue",
+    "offset": 304,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "benefitResetWeek",
+    "offset": 308,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "benefitResetTime",
+    "offset": 437,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "benefitExplanation",
+    "offset": 441,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "useBenefitExplanation",
+    "offset": 570,
+    "size": 129,
+    "kind": "str[129]"
+   },
+   {
+    "key": "thumbId",
+    "offset": 700,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "status",
+    "offset": 704,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "ranking": {
+  "func": "0x791460",
+  "match": 1.0,
+  "size": 76,
+  "fields": [
+   {
+    "key": "rankingId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "category",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "startDatetime",
+    "offset": 8,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "endDatetime",
+    "offset": 16,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "startRank",
+    "offset": 24,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "endRank",
+    "offset": 28,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "unionStartRank",
+    "offset": 32,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "unionEndRank",
+    "offset": 52,
+    "size": 20,
+    "kind": "int[5]"
+   },
+   {
+    "key": "validReward",
+    "offset": 72,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "stamp": {
+  "func": "0x791b78",
+  "match": 1.0,
+  "size": 32,
+  "fields": [
+   {
+    "key": "stampId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "category",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "imageId",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "require",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sortId",
+    "offset": 16,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "imageWidth",
+    "offset": 20,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "imageHeight",
+    "offset": 24,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validStamp",
+    "offset": 28,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "guiltProb": {
+  "func": "0x792158",
+  "match": 1.0,
+  "size": 20,
+  "fields": [
+   {
+    "key": "id",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "value",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "factor",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "weight",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "isCampaign",
+    "offset": 16,
+    "size": 4,
+    "kind": "int"
+   }
+  ]
+ },
+ "mypageBackground": {
+  "func": "0x792674",
+  "match": 0.92,
+  "size": 160,
+  "fields": [
+   {
+    "key": "id",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "backgroundId",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "sortId",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validChild",
+    "offset": 12,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "startTime",
+    "offset": 16,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "endTime",
+    "offset": 24,
+    "size": 8,
+    "kind": "date"
+   },
+   {
+    "key": "viewType",
+    "offset": 32,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validParts",
+    "offset": 36,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "partsId",
+    "offset": 40,
+    "size": 24,
+    "kind": "int[6]"
+   },
+   {
+    "key": "dataType",
+    "offset": 64,
+    "size": 24,
+    "kind": "int[6]"
+   },
+   {
+    "key": "xPostion",
+    "offset": 88,
+    "size": 24,
+    "kind": "int[6]"
+   },
+   {
+    "key": "yPostion",
+    "offset": 112,
+    "size": 24,
+    "kind": "int[6]"
+   },
+   {
+    "key": "zSort",
+    "offset": 136,
+    "size": 24,
+    "kind": "int[6]"
+   }
+  ]
+ },
+ "evResource": {
+  "func": "0x792f28",
+  "match": 1.0,
+  "size": 20,
+  "fields": [
+   {
+    "key": "resourceId",
+    "offset": 0,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "priority",
+    "offset": 4,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "validResource",
+    "offset": 8,
+    "size": 4,
+    "kind": "int"
+   },
+   {
+    "key": "endTime",
+    "offset": 12,
+    "size": 8,
+    "kind": "date"
+   }
+  ]
+ }
+}

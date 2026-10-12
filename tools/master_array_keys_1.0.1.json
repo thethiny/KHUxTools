@@ -1,0 +1,199 @@
+{
+ "avatarParts": [
+  "setCloth"
+ ],
+ "badstatus": [
+  "power"
+ ],
+ "burst": [
+  "basePowerPerEnforce",
+  "displayMaxPowerPerEnforce",
+  "displayPowerPerEnforce",
+  "sp1PerEnforce",
+  "sp2PerEnforce"
+ ],
+ "colosseum": [
+  "rewardAssignType",
+  "rewardId",
+  "rewardNum",
+  "rewardSkillId",
+  "rewardSkillLv",
+  "rewardType"
+ ],
+ "colosseumStage": [
+  "stageId"
+ ],
+ "drawMedalType": [
+  "lotCount",
+  "lotN",
+  "lotPn",
+  "lotPr",
+  "lotPsr",
+  "lotR",
+  "lotSr",
+  "tableIds",
+  "warrantMedalListIds",
+  "warrantResetMedalListIds"
+ ],
+ "enemy": [
+  "attack",
+  "baseLv",
+  "defense",
+  "exp",
+  "hp",
+  "lux",
+  "money",
+  "raidPoint",
+  "skillId",
+  "skillOdds",
+  "skillRequire",
+  "skillRequireArg",
+  "statusAilments"
+ ],
+ "evCampaign": [
+  "stageId"
+ ],
+ "evStage": [
+  "stageId"
+ ],
+ "keyblade": [
+  "accord",
+  "attribute",
+  "darklight",
+  "dlaccord",
+  "needMaterialId",
+  "needMaterialNum"
+ ],
+ "medal": [
+  "burstEnhanceCategory",
+  "evolveNeedId",
+  "source"
+ ],
+ "medalMisc": [
+  "value"
+ ],
+ "mypageBackground": [
+  "dataType",
+  "partsId",
+  "xPostion",
+  "yPostion",
+  "zSort"
+ ],
+ "raidEnemy": [
+  "attack",
+  "baseLv",
+  "burstAttack",
+  "burstSuppress",
+  "defense",
+  "destroyAllRewardId",
+  "expAttack",
+  "expSuppress",
+  "guiltSuppress",
+  "hp",
+  "hpAttack",
+  "hpSuppress",
+  "luxAttack",
+  "luxSuppress",
+  "moneyAttack",
+  "moneySuppress",
+  "mvpRewardId",
+  "parts",
+  "rewardId",
+  "skillId",
+  "skillOdds",
+  "skillRequire",
+  "skillRequireArg",
+  "statusAilments"
+ ],
+ "raidReward": [
+  "assignSkillId",
+  "assignSkillLv",
+  "assignSkillType",
+  "id",
+  "num",
+  "odds",
+  "type"
+ ],
+ "raidSetting": [
+  "unlockRareBossId",
+  "unlockRareNum"
+ ],
+ "ranking": [
+  "unionEndRank",
+  "unionStartRank"
+ ],
+ "rankingReward": [
+  "id",
+  "num",
+  "skillId",
+  "skillLv",
+  "skillType",
+  "type"
+ ],
+ "reward": [
+  "assignSkillId",
+  "assignSkillLv",
+  "assignSkillType",
+  "display",
+  "id",
+  "num",
+  "odds",
+  "type"
+ ],
+ "serialcodeReward": [
+  "id",
+  "num",
+  "skillId",
+  "skillLv",
+  "skillType",
+  "type"
+ ],
+ "skillExp": [
+  "value"
+ ],
+ "sphereArray": [
+  "spCol0",
+  "spCol1",
+  "spCol2",
+  "spCol3",
+  "spCol4"
+ ],
+ "sphereMasu": [
+  "medalCategory",
+  "rewardExpand",
+  "rewardExpandId",
+  "rewardId",
+  "rewardSelect",
+  "rewardValue",
+  "spherePoint"
+ ],
+ "stage": [
+  "afterDramaId",
+  "afterDramaType",
+  "beforeDramaId",
+  "beforeDramaType",
+  "clearGetAssignSkillId",
+  "clearGetAssignSkillLv",
+  "clearGetAssignSkillType",
+  "clearGetItemId",
+  "clearGetItemNum",
+  "clearGetItemType",
+  "submissionDataType",
+  "submissionId",
+  "submissionIdType",
+  "submissionItemId",
+  "submissionItemNum",
+  "submissionName",
+  "submissionNum",
+  "submissionRequire",
+  "submissionRewardType",
+  "submissionSkillId",
+  "submissionSkillLv",
+  "submissionSkillType"
+ ],
+ "world": [
+  "partsId",
+  "xPostion",
+  "yPostion"
+ ]
+}
