@@ -64,3 +64,10 @@ tools/.asm_refs_*.json
 test_render.py
 tools/test_cs_render.py
 tools/launch_113.sh
+
+# Developer bundle shared with other preservation projects (tools/make_dev_bundle.py)
+dev_bundle/
+
+# Crash dumps and scratch output
+*.stackdump
+dev_bundle_check.txt

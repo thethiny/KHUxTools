@@ -62,4 +62,5 @@ See [FILEFORMATS.md](FILEFORMATS.md) for complete documentation of all formats.
 
 ## License
 
-See individual file headers for attribution.
+MIT, see [LICENSE](LICENSE). Credit is required: keep the copyright notice in copies and
+derived work. Game data and assets are not covered (they belong to Square Enix).
