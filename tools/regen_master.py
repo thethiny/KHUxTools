@@ -50,8 +50,12 @@ ORDER_101 = [
     "serialcodeReward", "shop", "skillExp", "skill", "sphereArray", "sphere", "sphereMasu", "stage", "stamp",
     "title", "tutorialMisc", "world",
 ]
-DROPPED_113 = {"albumChallenge", "avatarCombination", "chapter", "drawMedalList", "drawSkillList", "drawSkillType"}
-NEW_113_AT = {13: "<new in 1.1.3, 252-byte records>"}   # evStage is m014 (1204 bytes in 1.1.3)
+# 1.1.3 has no evGroupPattern: its ev* tables are evCampaign, evMedalList (m011), evResource, evScoreReward (m013),
+# evStage (m014) - 1.1.3 strings.txt. So m011 is evMedalList, not evGroupPattern (it used to be written to
+# evGroupPattern.json; the server serves evGroupPattern empty - the client never reads it).
+DROPPED_113 = {"albumChallenge", "avatarCombination", "chapter", "drawMedalList", "drawSkillList", "drawSkillType",
+               "evGroupPattern"}
+NEW_113_AT = {11: "evMedalList (new in 1.1.3)", 13: "evScoreReward (new in 1.1.3, 252-byte records)"}
 
 
 def m_file_map():
