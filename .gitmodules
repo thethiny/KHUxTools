@@ -1,3 +1,6 @@
 [submodule "recomp"]
 	path = recomp
 	url = git@github.com:thethiny/KHUx-Recomp.git
+[submodule "native"]
+	path = native
+	url = git@github.com:thethiny/KHUx-Native.git
